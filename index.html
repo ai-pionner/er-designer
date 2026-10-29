@@ -1,0 +1,3591 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>数据库关系设计器 · ER Designer</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --line:#e5e9f0; --line2:#eef1f6;
+    --ink:#1f2937; --ink2:#64748b; --ink3:#94a3b8;
+    --accent:#6366f1; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+    --danger:#e5484d;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    color:var(--ink); background:var(--bg); overflow:hidden;
+    -webkit-font-smoothing:antialiased; font-size:13px;
+  }
+  button{font-family:inherit}
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* ---------- top bar ---------- */
+  .top{
+    height:56px;flex:0 0 56px;display:flex;align-items:center;gap:14px;
+    padding:0 16px 0 18px;background:var(--panel);border-bottom:1px solid var(--line);
+    position:relative;z-index:30;
+  }
+  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .logo{
+    width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;
+    background:linear-gradient(140deg,#7c5cf0,#4f7cf7);color:#fff;box-shadow:0 2px 6px rgba(99,102,241,.35);
+  }
+  .brand h1{font-size:13.5px;margin:0;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+  .brand p{margin:1px 0 0;font-size:11px;color:var(--ink3);white-space:nowrap}
+  .tools{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .btn{
+    height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);font-size:12px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px;transition:.14s;white-space:nowrap;
+  }
+  .btn:hover{background:#f7f9fc;border-color:#d6dbe5}
+  .btn:active{transform:translateY(.5px)}
+  .btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 1px 2px rgba(79,70,229,.35)}
+  .btn.primary:hover{background:#463ddb}
+  .btn.danger{color:var(--danger)}
+  .btn.danger:hover{background:#fdf2f2;border-color:#f3c9cb}
+  .btn.icon{width:30px;padding:0;justify-content:center;font-size:15px;color:var(--ink2)}
+  .btn.icon:disabled{opacity:.32;cursor:default;background:#fff;border-color:var(--line)}
+  .btn.icon:disabled:hover{background:#fff;border-color:var(--line)}
+  .zoomlab{font-size:11.5px;color:var(--ink2);width:42px;text-align:center;font-variant-numeric:tabular-nums}
+  .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+
+  /* ---------- layout ---------- */
+  main{flex:1;display:flex;min-height:0}
+  #wrap{
+    position:relative;flex:1;min-width:0;overflow:hidden;
+    background-color:#fbfcfe;
+    background-image:radial-gradient(#d7dee9 1.05px, transparent 1.05px);
+    background-size:20px 20px;
+    cursor:default;
+  }
+  #stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #layer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  /* 画布里的文字（SVG 文字 + 浮层）一律不可选中：拖拽时不会拉出蓝色文字选区 */
+  #wrap,#stage,#layer{user-select:none;-webkit-user-select:none;-moz-user-select:none}
+  /* 拖动期间统一用手型光标：静态时表名/模块名仍是 text（提示可点改名） */
+  #stage.is-dragging, #stage.is-dragging g, #stage.is-dragging rect,
+  #stage.is-dragging text, #stage.is-dragging path{cursor:grabbing !important}
+  /* 输入框单独放行，否则改名 / 填列名时光标与选区都用不了 */
+  .inline-edit,.fld input,input,textarea,[contenteditable="true"]{
+    user-select:text !important;-webkit-user-select:text !important;-moz-user-select:text !important;
+  }
+  #layer > *{pointer-events:auto}
+  /* 文件拖入画布时的提示：只加一圈虚线 + 顶部胶囊，不压暗内容 */
+  #wrap.dropping::before{
+    content:"";position:absolute;inset:10px;border:2px dashed #a5b4fc;border-radius:14px;
+    background:rgba(238,242,255,.30);pointer-events:none;z-index:24;
+  }
+  #wrap.dropping::after{
+    content:"松开即可导入 SVG";
+    position:absolute;left:50%;top:20px;transform:translateX(-50%);
+    background:#4f46e5;color:#fff;font-size:12px;font-weight:600;letter-spacing:.3px;
+    padding:6px 15px;border-radius:999px;white-space:nowrap;pointer-events:none;z-index:25;
+    box-shadow:0 6px 18px rgba(79,70,229,.32);
+  }
+
+  /* ---------- palette ---------- */
+  .pal{
+    width:246px;flex:0 0 246px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;
+  }
+  .pal-hd{
+    height:42px;flex:0 0 42px;display:flex;align-items:center;padding:0 16px;
+    font-size:12px;font-weight:700;letter-spacing:.4px;color:var(--ink);
+    border-bottom:1px solid var(--line2);
+  }
+  .pal-body{flex:1;overflow-y:auto;padding:12px 14px 18px}
+  .pal-sec + .pal-sec{margin-top:16px}
+  .pal-tt{font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.4px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .pal-tt span{font-size:9px;font-weight:600;color:var(--ink3);letter-spacing:.12em}
+  .pal-tt::after{content:"";flex:1;height:1px;background:var(--line2)}
+  .pal-item{
+    border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px;cursor:grab;
+    display:flex;align-items:center;gap:10px;transition:.15s;user-select:none;
+  }
+  .pal-item:hover{border-color:#c7d2fe;box-shadow:0 2px 8px rgba(79,70,229,.10);transform:translateY(-1px)}
+  .pal-item:active{cursor:grabbing;transform:translateY(0)}
+  .pi-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .pi-txt b{font-size:12px;font-weight:600}
+  .pi-txt i{font-size:10.5px;color:var(--ink3);font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pi-mod{width:52px;height:34px;flex:0 0 52px;border:1.4px dashed #cbc2f7;background:#f7f4ff;border-radius:7px;position:relative}
+  .pi-pill{
+    position:absolute;left:5px;top:-5px;font-size:6.5px;font-weight:800;letter-spacing:.08em;
+    background:#fff;border:1px solid #cbc2f7;color:#6d4bd8;border-radius:5px;padding:1px 3px;
+  }
+  .pi-tbl{width:52px;height:34px;flex:0 0 52px;border:1px solid #e3e7ee;border-radius:7px;background:#fff;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+  .pi-tbl i{display:block;height:9px;background:#f3efff;border-bottom:1px solid #e8e3fb}
+  .pi-tbl u{display:block;height:7px;border-bottom:1px solid #f2f4f8}
+  .pi-tbl u:last-child{border-bottom:0}
+  .pal-tip{
+    margin-top:auto;padding:10px 14px 14px;font-size:10.5px;line-height:1.7;color:var(--ink3);
+    border-top:1px solid var(--line2);
+  }
+  .pal-tip b{color:var(--ink2);font-weight:600}
+  kbd{
+    display:inline-block;padding:0 4px;min-width:14px;text-align:center;border:1px solid var(--line);
+    border-bottom-width:1.5px;border-radius:4px;background:#fafbfd;font-size:9.5px;color:var(--ink2);
+    font-family:ui-monospace,Consolas,monospace;
+  }
+
+  /* ---------- hint / legend ---------- */
+  .legend{
+    position:absolute;left:16px;bottom:14px;display:flex;gap:14px;align-items:center;
+    background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:9px;
+    padding:6px 12px;font-size:10.5px;color:var(--ink2);backdrop-filter:blur(4px);
+    box-shadow:0 1px 3px rgba(16,24,40,.05);pointer-events:none;
+  }
+  .legend b{font-weight:700;color:var(--ink3);letter-spacing:.1em;font-size:9.5px;margin-right:2px}
+  .legend i{display:inline-flex;align-items:center;gap:4px;font-style:normal}
+  .bdg{display:inline-block;font-size:8.5px;font-weight:700;padding:0 4px;border-radius:3px;line-height:13px}
+  .bdg.pk{background:#ede9fe;color:#6d4bd8}
+  .bdg.fk{background:#fef1e2;color:#c2761a}
+  .bdg.uk{background:#eef2f7;color:#7b8798}
+  .legend svg{display:block}
+  .legend .anc{width:9px;height:9px;border-radius:50%;background:#fff;border:1.8px solid #6d4bd8;display:inline-block}
+
+  .empty{
+    position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;
+    color:var(--ink3);text-align:center;line-height:1.9;
+  }
+  .empty .big{font-size:15px;color:var(--ink2);font-weight:600;margin-bottom:6px}
+
+  /* ---------- popovers ---------- */
+  .pop{
+    position:absolute;z-index:50;background:#fff;border:1px solid var(--line);border-radius:11px;
+    box-shadow:0 10px 28px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.06);
+    padding:11px;width:236px;display:none;
+  }
+  .pop-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+  .pop-hd span:first-child{font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.3px}
+  .pop-x{
+    width:18px;height:18px;border-radius:5px;border:0;background:transparent;color:var(--ink3);
+    cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center;
+  }
+  .pop-x:hover{background:#f2f4f8;color:var(--ink)}
+  .fld{display:block;margin-bottom:8px}
+  .fld i{display:block;font-style:normal;font-size:10px;color:var(--ink3);margin-bottom:3px;letter-spacing:.2px}
+  .fld input{
+    width:100%;height:28px;border:1px solid var(--line);border-radius:7px;padding:0 8px;
+    font-size:12px;color:var(--ink);outline:none;background:#fcfdff;font-family:inherit;
+  }
+  .fld input:focus{border-color:#a5b4fc;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.10)}
+  .fld input.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:11.5px}
+
+  /* ---------- 类型下拉 ---------- */
+  .ts-w{position:relative}
+  .ts-w input{padding-right:28px}
+  .ts-arw{
+    position:absolute;right:3px;top:3px;width:22px;height:22px;padding:0;border:0;border-radius:5px;
+    background:transparent;color:#a8b0bd;cursor:pointer;font-size:9px;line-height:1;
+    display:grid;place-items:center;transition:.12s;
+  }
+  .ts-arw:hover{background:#f2f4f8;color:var(--ink2)}
+  .ts-w.open .ts-arw{color:#6366f1;background:#f3f4ff}
+  .ts-panel{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;background:#fff;
+    border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 12px 26px rgba(16,24,40,.16),0 2px 5px rgba(16,24,40,.06);
+    max-height:196px;overflow:auto;padding:4px 0;display:none;
+  }
+  .ts-panel.on{display:block}
+  .ts-panel.up{top:auto;bottom:calc(100% + 4px)}
+  .ts-grp{
+    font-size:9.5px;font-weight:700;letter-spacing:.4px;color:#aab2bf;
+    padding:7px 10px 3px;
+  }
+  .ts-grp:first-child{padding-top:3px}
+  .ts-opt{
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:11.5px;color:var(--ink2);
+    padding:4px 10px;cursor:pointer;line-height:1.5;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;
+  }
+  .ts-opt:hover{background:#f5f6fa;color:var(--ink)}
+  .ts-opt.on{background:#f3f4ff;color:#4338ca}
+  .ts-empty{padding:11px 10px;text-align:center;font-size:10.5px;color:#aab2bf;line-height:1.6}
+  .chips{display:flex;gap:6px;margin:2px 0 10px}
+  .chip{
+    flex:1;height:26px;border-radius:7px;border:1px solid var(--line);background:#fff;cursor:pointer;
+    font-size:10.5px;font-weight:700;color:var(--ink3);letter-spacing:.3px;transition:.12s;
+  }
+  .chip:hover{border-color:#d6dbe5;color:var(--ink2)}
+  .chip[data-on="1"][data-t="pk"]{background:#ede9fe;border-color:#c4b5fd;color:#6d4bd8}
+  .chip[data-on="1"][data-t="fk"]{background:#fef1e2;border-color:#fcd9a8;color:#c2761a}
+  .chip[data-on="1"][data-t="uk"]{background:#eef2f7;border-color:#d3dbe6;color:#65717f}
+  .chip[data-on="1"][data-t="nn"]{background:#eef2ff;border-color:#c7d2fe;color:#4338ca}
+  .pop-note{margin-top:7px;font-size:10px;line-height:1.55;color:#a3abb9}
+  .seg{display:flex;gap:5px;margin-bottom:9px}
+  .ep-box{background:#f8fafd;border:1px solid #eaeef5;border-radius:8px;padding:5px 7px;margin-bottom:9px}
+  .ep-row{display:flex;align-items:center;gap:6px;height:20px}
+  .ep-row + .ep-row{border-top:1px dashed #e8ecf3}
+  .ep-tag{flex:0 0 auto;width:15px;height:15px;border-radius:4px;font-size:9.5px;font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;line-height:1}
+  .ep-txt{flex:1 1 auto;min-width:0;font-size:11px;color:var(--ink);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+  .ep-x{flex:0 0 auto;border:1px solid #e3e7ee;background:#fff;border-radius:5px;color:var(--ink2);
+    font-size:10px;padding:1px 6px;cursor:pointer;line-height:1.5;white-space:nowrap;letter-spacing:.01em}
+  .ep-x:hover{border-color:#c7d2fe;color:#4338ca;background:#f6f7ff}
+  .seg button{
+    flex:1;height:28px;border-radius:7px;border:1px solid var(--line);background:#fff;cursor:pointer;
+    font-size:11px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;transition:.12s;
+  }
+  .seg button:hover{border-color:#d6dbe5}
+  .seg button[data-on="1"]{background:var(--accent-soft);border-color:var(--accent-line);color:#4338ca}
+  .pop-del{
+    width:100%;height:27px;border-radius:7px;border:1px solid #f3d5d7;background:#fdf5f5;color:#c5393f;
+    font-size:11px;cursor:pointer;
+  }
+  .pop-del:hover{background:#fbedee}
+
+  /* ---------- palette 里的批量按钮 ---------- */
+  .pal-btn{
+    width:100%;display:flex;align-items:center;gap:10px;text-align:left;
+    border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px 10px;
+    cursor:pointer;transition:.15s;font-family:inherit;
+  }
+  .pal-btn:hover{border-color:#c7d2fe;box-shadow:0 2px 8px rgba(79,70,229,.10);transform:translateY(-1px)}
+  .pal-btn:active{transform:translateY(0)}
+  .pal-btn-i{
+    width:30px;height:30px;flex:0 0 30px;border-radius:8px;display:grid;place-items:center;
+    background:#eef2ff;color:#4f46e5;font-size:15px;font-weight:600;
+  }
+
+  /* ---------- DDL 导入弹窗 ---------- */
+  .modal{position:fixed;inset:0;display:none;z-index:120;background:rgba(17,24,39,.34);backdrop-filter:blur(2px)}
+  .modal.on{display:grid;place-items:center}
+  .modal-card{
+    width:620px;max-width:calc(100vw - 40px);max-height:calc(100vh - 60px);
+    display:flex;flex-direction:column;background:#fff;border-radius:14px;
+    box-shadow:0 24px 60px rgba(16,24,40,.28);overflow:hidden;
+  }
+  .modal-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px}
+  .modal-hd b{font-size:13.5px;font-weight:700;color:var(--ink)}
+  .modal-sub{padding:0 16px 10px;font-size:11.5px;color:var(--ink3);line-height:1.6}
+  #ddlText{
+    margin:0 16px;height:168px;resize:vertical;border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:11.5px;
+    line-height:1.7;color:var(--ink);background:#fcfdff;outline:none;
+  }
+  #ddlText:focus{border-color:#a5b4fc;background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,.10)}
+  .modal-row{display:flex;align-items:center;gap:10px;padding:10px 16px 6px}
+  .modal-hint{font-size:10.5px;color:var(--ink3);line-height:1.5}
+  .ddl-preview{
+    margin:4px 16px 0;flex:1;min-height:76px;max-height:220px;overflow:auto;
+    border:1px solid var(--line2);border-radius:10px;background:#fafbfe;padding:8px 10px;
+  }
+  .ddl-preview .dp-empty{font-size:11px;color:var(--ink3);padding:6px 2px}
+  .dp-t{font-size:11px;font-weight:700;color:var(--ink2);margin:2px 0 6px}
+  .dp-t i{font-style:normal;font-weight:500;color:var(--ink3);margin-left:6px}
+  .dp-r{display:flex;align-items:center;gap:7px;height:21px;font-size:11px}
+  .dp-n{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;color:var(--ink);min-width:118px}
+  .dp-ty{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;color:#8b95a7;flex:0 0 118px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+  .dp-cm{color:#9aa5b5;font-size:10.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dp-warn{
+    margin:6px 0 4px;padding:5px 8px;border-radius:7px;background:#fff8ec;color:#a8661a;
+    font-size:10.5px;line-height:1.5;border:1px solid #f6e2c3;
+  }
+  .dp-more{font-size:10.5px;color:var(--ink3);padding:3px 2px}
+  .dp-tag{font-size:8.5px;font-weight:800;padding:0 4px;border-radius:4px;line-height:14px}
+  .dp-tag.pk{background:#ede9fe;color:#6d4bd8}
+  .dp-tag.fk{background:#fef1e2;color:#c2761a}
+  .dp-tag.uk{background:#eef2f7;color:#7b8798}
+  .modal-ft{display:flex;align-items:center;gap:8px;padding:12px 16px 14px;border-top:1px solid var(--line2);margin-top:10px}
+  .modal-ft .sp{flex:1}
+  .btn:disabled{opacity:.45;cursor:default}
+
+  .inline-edit{
+    position:absolute;z-index:60;border:1.5px solid #a5b4fc;border-radius:7px;background:#fff;
+    outline:none;box-shadow:0 0 0 3px rgba(99,102,241,.12);color:var(--ink);
+    padding:0;text-align:center;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+
+  .toast{
+    position:fixed;left:50%;bottom:34px;transform:translate(-50%,14px);
+    background:#1f2937;color:#fff;font-size:12px;padding:8px 16px;border-radius:999px;
+    opacity:0;pointer-events:none;transition:.24s;z-index:99;box-shadow:0 8px 24px rgba(16,24,40,.22);
+    max-width:70vw;
+  }
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  .toast.warn{background:#b4383e}
+
+  .ghost{
+    position:fixed;z-index:200;pointer-events:none;opacity:.92;
+    transform:rotate(-1.2deg);filter:drop-shadow(0 8px 18px rgba(16,24,40,.18));
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="2.5" width="12" height="11" rx="2.2" stroke="#fff" stroke-width="1.3"/>
+          <path d="M2 6.2h12M6.4 6.2v7.3" stroke="#fff" stroke-width="1.3"/>
+        </svg>
+      </div>
+      <div>
+        <h1>数据库关系设计器</h1>
+        <p>拖拽建模 · 主外键标注 · 导出的 SVG 可再导入</p>
+      </div>
+    </div>
+    <div class="tools">
+      <button class="btn" id="btnAddModule">
+        <svg width="11" height="11" viewBox="0 0 12 12"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        模块
+      </button>
+      <div class="sep"></div>
+      <button class="btn icon" id="btnOut" title="缩小">−</button>
+      <div class="zoomlab" id="zoomLab">100%</div>
+      <button class="btn icon" id="btnIn" title="放大">+</button>
+      <button class="btn" id="btnFit">适应画布</button>
+      <div class="sep"></div>
+      <button class="btn icon" id="btnUndo" title="撤销 (Ctrl+Z)">↶</button>
+      <button class="btn icon" id="btnRedo" title="重做 (Ctrl+Shift+Z)">↷</button>
+      <div class="sep"></div>
+      <button class="btn" id="btnImport" title="导入此前导出的 SVG，继续编辑 (Ctrl+O)">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 8.2V1.4M3.4 4 6 1.4 8.6 4M1.8 8.2v1.6c0 .5.4.8.8.8h6.8c.4 0 .8-.3.8-.8V8.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        导入 SVG
+      </button>
+      <button class="btn" id="btnSvg">导出 SVG</button>
+      <button class="btn primary" id="btnPng">导出 PNG</button>
+      <button class="btn danger" id="btnClear">清空</button>
+      <input type="file" id="fileSvg" accept=".svg,image/svg+xml" hidden>
+    </div>
+  </header>
+
+  <main>
+    <section id="wrap">
+      <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="layer"></div>
+      <div class="legend">
+        <b>LEGEND</b>
+        <i><span class="bdg pk">PK</span>主键</i>
+        <i><span class="bdg fk">FK</span>外键</i>
+        <i><span class="bdg uk">UK</span>唯一</i>
+        <i>
+          <svg width="26" height="12" viewBox="0 0 26 12"><path d="M0 6h18" stroke="#94a3b8" stroke-width="1.4"/><path d="M18 1v10" stroke="#94a3b8" stroke-width="1.4"/></svg>
+          唯一端
+        </i>
+        <i>
+          <svg width="26" height="12" viewBox="0 0 26 12"><path d="M0 6h16" stroke="#94a3b8" stroke-width="1.4"/><path d="M16 6 24 1M16 6l8 5M16 6h8" stroke="#94a3b8" stroke-width="1.4" fill="none"/></svg>
+          多端
+        </i>
+        <i><span class="anc"></span>列锚点</i>
+      </div>
+      <div class="empty" id="empty" style="display:none">
+        <div>
+          <div class="big">画布是空的</div>
+          <div>从右侧组件库拖入「模块」，再把「表」放进模块里</div>
+          <div style="margin-top:6px;font-size:11.5px;color:#94a3b8">也可以把之前导出的 .svg 拖进来，接着改</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="pal">
+      <div class="pal-hd">组件库 · PALETTE</div>
+      <div class="pal-body">
+        <div class="pal-sec">
+          <div class="pal-tt">模块 <span>MODULE</span></div>
+          <div class="pal-item" data-pal="module">
+            <div class="pi-mod"><span class="pi-pill">MODULE</span></div>
+            <div class="pi-txt"><b>模块</b><i>可任意摆放，互不重叠</i></div>
+          </div>
+        </div>
+        <div class="pal-sec">
+          <div class="pal-tt">表 <span>TABLE</span></div>
+          <div class="pal-item" data-pal="table">
+            <div class="pi-tbl"><i></i><u></u><u></u><u></u></div>
+            <div class="pi-txt"><b>表</b><i>只能放入模块内，互不重叠</i></div>
+          </div>
+        </div>
+        <div class="pal-sec">
+          <div class="pal-tt">批量 <span>BULK</span></div>
+          <button class="pal-btn" id="btnDdlBulk">
+            <span class="pal-btn-i">⇥</span>
+            <span class="pi-txt"><b>粘贴 DDL 建表</b><i>一次生成多张表，外键自动连线</i></span>
+          </button>
+        </div>
+      </div>
+      <div class="pal-tip">
+        <b>操作提示</b><br>
+        拖标题=移动，单击标题=重命名<br>
+        点列=编辑列属性；悬停某行，PK 行右端 / FK 行左端冒出的圆点=拖出连线<br>
+        点连线上的标签=切换 1:1 / 1:N / N:N；点线本身=选中<br>
+        按住线拖走一端=改连或断开（拖到空白即为断开）<br>
+        拖模块/表时会自动对齐同类的边缘与中线，按住 <kbd>Alt</kbd> 可暂时关闭<br>
+        模块会紧贴里面的表（四边各 14），空模块保持默认大小<br>
+        <kbd>Del</kbd> 删除选中 · <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销 · 滚轮缩放 · 空白处拖拽平移<br>
+        <kbd>Ctrl</kbd>+<kbd>O</kbd> 或把 .svg 拖进画布 = 导入继续编辑
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="pop" id="colPop"></div>
+<div class="pop" id="relPop"></div>
+<div class="modal" id="ddlModal">
+  <div class="modal-card">
+    <div class="modal-hd">
+      <b id="ddlTitle">导入字段</b>
+      <button class="pop-x" data-act="ddl-close">×</button>
+    </div>
+    <div class="modal-sub" id="ddlSub">把建表语句贴进来即可，不必完整 —— 只贴列定义也行。</div>
+    <textarea id="ddlText" spellcheck="false" placeholder="CREATE TABLE `customer` (&#10;  `id` bigint NOT NULL COMMENT '主键',&#10;  `email` varchar(255) COMMENT '邮箱',&#10;  PRIMARY KEY (`id`)&#10;);"></textarea>
+    <div class="modal-row">
+      <button class="btn" id="ddlFile">选择 .sql 文件</button>
+      <span class="modal-hint" id="ddlHint">支持 MySQL / PostgreSQL / SQL Server；字段的中文名取自 COMMENT</span>
+      <input type="file" id="ddlFileInput" accept=".sql,.ddl,.txt,text/plain" hidden>
+    </div>
+    <div class="ddl-preview" id="ddlPreview"></div>
+    <div class="modal-ft">
+      <span class="sp"></span>
+      <button class="btn" data-act="ddl-close">取消</button>
+      <button class="btn" id="ddlAppend">追加字段</button>
+      <button class="btn" id="ddlReplace">替换字段</button>
+      <button class="btn primary" id="ddlCreate">创建表</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+"use strict";
+
+/* =========================================================
+   1. 常量与主题
+   ========================================================= */
+const LS_KEY = "er-designer-v1";
+
+const PALETTES = [
+  {key:"purple", accent:"#8b5cf6", border:"#cec1fa", tint:"#f8f5ff", head:"#f4f0ff", text:"#6d4bd8"},
+  {key:"teal",   accent:"#2aa3bd", border:"#b4dfe9", tint:"#f3fbfd", head:"#ecf8fb", text:"#1c7e94"},
+  {key:"amber",  accent:"#d99a2b", border:"#eed8a6", tint:"#fdfaf1", head:"#fdf6e6", text:"#a9741a"},
+  {key:"green",  accent:"#25a37d", border:"#b0e4d2", tint:"#f2fbf7", head:"#ecfaf5", text:"#1a7d5f"},
+  {key:"blue",   accent:"#4f7cf7", border:"#c0d1fb", tint:"#f4f8ff", head:"#eef4ff", text:"#3a60c9"},
+  {key:"rose",   accent:"#e0607f", border:"#f5c5d3", tint:"#fff6f9", head:"#fff0f5", text:"#b8405e"}
+];
+
+const ROW_H = 26, HEAD_H = 34, FOOT_H = 24;
+const META_H = 19;          // 展开明细时，列名下方那行小字占的高度
+const TBL_MIN_W = 232, TBL_MAX_W = 430;
+const M_PAD = 14, M_MIN_W = 300, M_MIN_H = 158;
+/* 拖表时落在模块边界外多远，仍然算「放进这个模块，让它朝这边长」 */
+const DROP_TOL = 200;
+const SANS = 'ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif';
+const MONO = 'ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace';
+
+const FONT = {
+  title: '600 13px ' + SANS,
+  name:  '400 12px ' + SANS,
+  type:  '400 11px ' + MONO,
+  label: '800 10px ' + SANS,
+  rel:   '600 10px ' + SANS,
+  badge: '700 9px ' + SANS,
+  foot:  '500 11px ' + SANS,
+  meta:  '400 10px ' + SANS
+};
+
+/* =========================================================
+   2. 状态
+   ========================================================= */
+let S = {seq:1, modules:[], tables:[], rels:[]};
+let view = {x:60, y:40, k:1};
+let sel  = null;          // {kind:'table'|'module'|'rel', id}
+let drag = null;          // 拖动 / 连线状态
+let press = null;         // 按下未移动
+let popTarget = null;     // 当前打开的浮层 {kind,id,...}
+let dropMod = null;       // 拖表时高亮的模块
+let sideUse = null;       // 每次渲染重建：哪些列的哪一侧已被连线占用（决定额外锚点）
+
+/* =========================================================
+   3. 基础工具
+   ========================================================= */
+const uid = p => p + (S.seq++).toString(36) + Math.random().toString(36).slice(2,5);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const _cv = document.createElement("canvas");
+const _cx = _cv.getContext("2d");
+function tw(text, font){
+  _cx.font = font;
+  return _cx.measureText(String(text == null ? "" : text)).width;
+}
+function fitText(text, maxW, font){
+  text = String(text == null ? "" : text);
+  if (tw(text, font) <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && tw(s + "…", font) > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+const badges = c => { const a=[]; if(c.pk)a.push("PK"); if(c.fk)a.push("FK"); if(c.uk)a.push("UK"); return a; };
+
+const getModule = id => S.modules.find(m => m.id === id);
+const getTable  = id => S.tables.find(t => t.id === id);
+const palOf = m => PALETTES[(m.colorIdx || 0) % PALETTES.length];
+
+/* =========================================================
+   4. 度量与几何
+   ========================================================= */
+/* 展开明细时列名下方那行小字：中文名 · NOT NULL · 默认值 */
+function metaLine(c){
+  const bits = [];
+  if (c.comment) bits.push(c.comment);
+  if (c.nn) bits.push("NOT NULL");
+  if (c.def != null && c.def !== "") bits.push("默认 " + c.def);
+  return bits.join(" · ");
+}
+
+function tableLayout(t){
+  const meta = !!t.showMeta;
+  const key = t.name + "|" + (meta ? "M" : "") + "|" + t.cols.map(c =>
+    c.name + "~" + c.type + "~" + badges(c).join("") + "~" + (meta ? metaLine(c) : "")).join("|");
+  if (t._lk === key && t._layout) return t._layout;
+
+  const bMax = t.cols.reduce((m, c) => Math.max(m, badges(c).length), 0);
+  const badgeW = bMax ? bMax * 22 + (bMax - 1) * 4 : 0;
+  const nameX = 13 + (bMax ? badgeW + 8 : 0);
+
+  let nameW = 0, typeW = 0, metaW = 0;
+  for (const c of t.cols){
+    nameW = Math.max(nameW, tw(c.name || " ", FONT.name));
+    typeW = Math.max(typeW, tw(c.type || " ", FONT.type));
+    if (meta) metaW = Math.max(metaW, tw(metaLine(c) || " ", FONT.meta));
+  }
+  const titleW = tw(t.name || " ", FONT.title);
+
+  let w = Math.max(nameX + Math.max(nameW, metaW) + 22 + typeW + 14, titleW + 86, TBL_MIN_W);
+  w = Math.min(w, TBL_MAX_W);
+
+  /* 行高：折叠时统一 ROW_H；展开后「有明细的列」多占一行 META_H */
+  const rowTop = [], rowH = [];
+  let bodyH = 0;
+  for (const c of t.cols){
+    rowTop.push(bodyH);
+    const rh = ROW_H + (meta && metaLine(c) ? META_H : 0);
+    rowH.push(rh);
+    bodyH += rh;
+  }
+  const h = HEAD_H + Math.max(bodyH, ROW_H) + FOOT_H;
+
+  const L = {w, h, nameX, bMax, nameMaxW: w - nameX - 14 - typeW - 22, rowTop, rowH, bodyH};
+  t._lk = key; t._layout = L;
+  return L;
+}
+
+/* 模块矩形：
+   · 空模块 —— 用自身宽高（m.w/m.h，默认 300×158），是个固定的空框；
+   · 有表 —— 完全由表的包围盒 ± M_PAD 决定，不再和 m.x/m.y 取并集。
+   所以只要表是最外侧的元素，四边的内边距就严格等于 M_PAD；
+   m.x/m.y 只在空模块时代表左上角，有表时由 syncModuleBoxes() 跟着内容走。
+   useLive=true 时按表的实时坐标算（拖放预览用，忽略 _orig 快照）。 */
+function moduleRect(m, useLive){
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+  for (const t of S.tables){
+    if (t.moduleId !== m.id) continue;
+    const L = tableLayout(t);
+    const tx = (!useLive && t._dragging && t._orig) ? t._orig.x : t.x;
+    const ty = (!useLive && t._dragging && t._orig) ? t._orig.y : t.y;
+    x0 = Math.min(x0, tx - M_PAD);
+    y0 = Math.min(y0, ty - M_PAD);
+    x1 = Math.max(x1, tx + L.w + M_PAD);
+    y1 = Math.max(y1, ty + L.h + M_PAD);
+    n++;
+  }
+  if (!n) return {x:m.x, y:m.y, w:(m.w > 0 ? m.w : M_MIN_W), h:(m.h > 0 ? m.h : M_MIN_H)};
+  return {x:x0, y:y0, w:x1 - x0, h:y1 - y0};
+}
+
+/* 让空模块记住「内容最后所在的位置」：模块被删空/表被移走后，
+   空框不会跳回很久以前的锚点，而是停在原来的地方。 */
+function syncModuleBoxes(){
+  for (const m of S.modules){
+    if (!S.tables.some(t => t.moduleId === m.id)) continue;
+    const r = moduleRect(m);
+    m.x = r.x; m.y = r.y;
+  }
+}
+
+/* ---------- 拖拽对齐吸附（smart guides） ----------
+   模块和表共用一套：给出「候选矩形 + 参照矩形集合」，算吸附增量与要画的线。
+   只认同类线（左对左 / 中对中 / 右对右），不做贴边配对，免得吸上去就撞。 */
+const ALIGN_TOL_PX  = 7;    // 吸附半径（屏幕像素）
+const ALIGN_TOL_MAX = 16;   // 缩得很小时别吸得太狠（世界单位上限）
+const snapTol = () => Math.min(ALIGN_TOL_PX / Math.max(view.k, .2), ALIGN_TOL_MAX);
+
+function addGuide(arr, v, a, b){
+  const hit = arr.find(g => Math.abs(g.v - v) < 0.6);
+  if (hit){ hit.a = Math.min(hit.a, a); hit.b = Math.max(hit.b, b); }
+  else arr.push({v, a, b});
+}
+
+/* box: 候选矩形；rects: 参照矩形；返回 {dx, dy, guides}
+   guides.vs 是竖线、guides.hs 是横线。每个轴向只画触发吸附的那一条，
+   否则同宽/同高的两个元素完全对齐时会并排冒出三条线，很吵。 */
+function snapBox(box, rects, tol){
+  if (!rects.length) return {dx:0, dy:0, guides:null};
+
+  const pick = axis => {
+    const bv = axis === "x"
+      ? [box.x, box.x + box.w/2, box.x + box.w]
+      : [box.y, box.y + box.h/2, box.y + box.h];
+    let best = null;
+    for (const o of rects){
+      const ov = axis === "x"
+        ? [o.x, o.x + o.w/2, o.x + o.w]
+        : [o.y, o.y + o.h/2, o.y + o.h];
+      for (let i = 0; i < 3; i++){
+        const d = ov[i] - bv[i], ad = Math.abs(d);
+        if (ad > tol) continue;
+        if (!best || ad < best.ad) best = {d, ad, i};
+      }
+    }
+    return best;
+  };
+  const bx = pick("x"), by = pick("y");
+  const dx = bx ? bx.d : 0, dy = by ? by.d : 0;
+
+  // 用吸附后的位置回头看：真正重合（<0.6px）的线才画
+  const px = {x: box.x + dx, y: box.y + dy, w: box.w, h: box.h};
+  const vs = [], hs = [];
+  for (const o of rects){
+    if (bx){
+      const ov = [o.x, o.x + o.w/2, o.x + o.w];
+      const mv = [px.x, px.x + px.w/2, px.x + px.w];
+      if (Math.abs(ov[bx.i] - mv[bx.i]) < .6)
+        addGuide(vs, ov[bx.i], Math.min(o.y, px.y), Math.max(o.y + o.h, px.y + px.h));
+    }
+    if (by){
+      const ov = [o.y, o.y + o.h/2, o.y + o.h];
+      const mv = [px.y, px.y + px.h/2, px.y + px.h];
+      if (Math.abs(ov[by.i] - mv[by.i]) < .6)
+        addGuide(hs, ov[by.i], Math.min(o.x, px.x), Math.max(o.x + o.w, px.x + px.w));
+    }
+  }
+  return {dx, dy, guides: (vs.length || hs.length) ? {vs, hs} : null};
+}
+
+/* 模块：拖拽中矩形只是整体平移，尺寸不变，用「基准矩形 + 位移」推位置 */
+function alignSnap(base, ax, ay, selfId){
+  const rects = [];
+  for (const m of S.modules){
+    if (m.id !== selfId) rects.push(moduleRect(m));
+  }
+  return snapBox({x:base.x + ax, y:base.y + ay, w:base.w, h:base.h}, rects, snapTol());
+}
+
+/* 表：与画布上其他表对齐（跨模块也算），用于同行 / 同列 / 同中线 */
+function tableSnap(t, nx, ny){
+  const L = tableLayout(t);
+  const rects = [];
+  for (const o of S.tables){
+    if (o.id === t.id) continue;
+    const ol = tableLayout(o);
+    rects.push({x:o.x, y:o.y, w:ol.w, h:ol.h});
+  }
+  const res = snapBox({x:nx, y:ny, w:L.w, h:L.h}, rects, snapTol());
+  return res;
+}
+
+const overlap = (a,b,gap) => {
+  gap = gap == null ? 12 : gap;
+  return a.x < b.x + b.w + gap && a.x + a.w + gap > b.x &&
+         a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+};
+
+function edgeAnchor(t, L, toward){
+  const cx = t.x + L.w/2, cy = t.y + L.h/2;
+  const dx = toward.x - cx, dy = toward.y - cy;
+  if (Math.abs(dx) >= Math.abs(dy)){
+    return dx >= 0
+      ? {p:{x:t.x + L.w, y:cy}, d:{x:1, y:0}}
+      : {p:{x:t.x, y:cy}, d:{x:-1, y:0}};
+  }
+  return dy >= 0
+    ? {p:{x:cx, y:t.y + L.h}, d:{x:0, y:1}}
+    : {p:{x:cx, y:t.y}, d:{x:0, y:-1}};
+}
+
+/* ---------- 关系端点：{表, 列}，兼容旧版字符串（整表） ---------- */
+const epOf = v => (typeof v === "string")
+  ? {t:v, c:null}
+  : (v && v.t ? {t:v.t, c:v.c || null} : {t:null, c:null});
+const relEnds = r => [epOf(r.from), epOf(r.to)];
+const relTableIds = r => relEnds(r).map(e => e.t);
+const epKey = e => (e.t || "") + "|" + (e.c || "");
+/* 端点的可读名：customer.id / customer（整表） */
+function epName(e){
+  const t = getTable(e.t);
+  if (!t) return "—";
+  const c = e.c ? colOf(e.t, e.c) : null;
+  return t.name + (c ? "." + c.name : "");
+}
+/* 方向归一：PK 端作 from（「一」），换端点后仍守这条约定 */
+function normalizeRelDir(r){
+  const A = epOf(r.from), B = epOf(r.to);
+  const rank = e => { const c = colOf(e.t, e.c); return c ? (c.fk && !c.pk ? 2 : (c.pk ? 0 : 1)) : 1; };
+  if (rank(A) > rank(B)){ const tmp = r.from; r.from = r.to; r.to = tmp; }
+}
+const colOf = (tid, cid) => {
+  const t = getTable(tid);
+  return (t && cid) ? (t.cols.find(c => c.id === cid) || null) : null;
+};
+
+/* 列所在行的中线（列已被删时退回第一行） */
+function rowYOf(t, c){
+  const i = t.cols.indexOf(c);
+  const L = tableLayout(t);
+  const top = (i >= 0 && L.rowTop) ? L.rowTop[i] : 0;
+  return t.y + HEAD_H + top + ROW_H/2;
+}
+/* 列锚点：L = 左边缘，R = 右边缘，纵向落在该行的中线上 */
+function colAnchorAt(t, c, side){
+  const L = tableLayout(t), y = rowYOf(t, c);
+  return side === "L"
+    ? {p:{x:t.x, y}, d:{x:-1, y:0}}
+    : {p:{x:t.x + L.w, y}, d:{x:1, y:0}};
+}
+/* 按角色取锚点：有列走列锚点，没列退回整表边缘（旧数据兜底） */
+function roleAnchor(t, ep, side, toward){
+  const c = ep.c ? (t.cols.find(x => x.id === ep.c) || null) : null;
+  return c ? colAnchorAt(t, c, side) : edgeAnchor(t, tableLayout(t), toward);
+}
+/* 由两表相对位置决定两侧的出线方向 */
+function relSides(a, b){
+  if (a.id === b.id) return {a:"R", b:"R"};              // 自引用：右侧绕回
+  const La = tableLayout(a), Lb = tableLayout(b);
+  const dx = (a.x + La.w/2) - (b.x + Lb.w/2);
+  if (Math.abs(dx) >= 60) return dx < 0 ? {a:"R", b:"L"} : {a:"L", b:"R"};  // 水平错开：面对面
+  return {a:"R", b:"R"};                                  // 垂直堆叠：同侧绕行
+}
+
+/* 这一对端点是否已经连过（正反都算）；ignoreId 用于拔线改连时排除自己 */
+function pairExists(x, y, ignoreId){
+  const k1 = epKey(x) + ">" + epKey(y), k2 = epKey(y) + ">" + epKey(x);
+  return S.rels.some(r => {
+    if (ignoreId && r.id === ignoreId) return false;
+    const [a, b] = relEnds(r), k = epKey(a) + ">" + epKey(b);
+    return k === k1 || k === k2;
+  });
+}
+
+/* 统计每条连线两端实际用了哪一侧：布局翻转后，锚点要跟着长在真正接线的那一边 */
+function buildSideUse(){
+  const map = new Map();
+  const put = (ep, side) => {
+    if (!ep.c) return;
+    const k = ep.t + "|" + ep.c;
+    if (!map.has(k)) map.set(k, new Set());
+    map.get(k).add(side);
+  };
+  for (const r of S.rels){
+    const [a, b] = relEnds(r);
+    const ta = getTable(a.t), tb = getTable(b.t);
+    if (!ta || !tb) continue;
+    const sd = relSides(ta, tb);
+    put(a, sd.a); put(b, sd.b);
+  }
+  return map;
+}
+
+function relGeom(r){
+  const [ea, eb] = relEnds(r);
+  const a = getTable(ea.t), b = getTable(eb.t);
+  if (!a || !b) return null;
+  const La = tableLayout(a), Lb = tableLayout(b);
+  const ca = {x:a.x + La.w/2, y:a.y + La.h/2};
+  const cb = {x:b.x + Lb.w/2, y:b.y + Lb.h/2};
+  const sd = relSides(a, b);
+  const A = roleAnchor(a, ea, sd.a, cb);
+  const B = roleAnchor(b, eb, sd.b, ca);
+  const dist = Math.hypot(B.p.x - A.p.x, B.p.y - A.p.y);
+  const loop = sd.a === sd.b;
+  const g = clamp(dist * (loop ? 0.72 : 0.42), loop ? 70 : 34, 190);
+  const c1 = {x:A.p.x + A.d.x * g, y:A.p.y + A.d.y * g};
+  const c2 = {x:B.p.x + B.d.x * g, y:B.p.y + B.d.y * g};
+  const mid = {
+    x: (A.p.x + 3*c1.x + 3*c2.x + B.p.x) / 8,
+    y: (A.p.y + 3*c1.y + 3*c2.y + B.p.y) / 8
+  };
+  return {A, B, c1, c2, mid, loop, path:`M${A.p.x} ${A.p.y} C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${B.p.x} ${B.p.y}`};
+}
+
+/* =========================================================
+   5. SVG 片段生成
+   ========================================================= */
+const SVG_STYLE = `<style>
+  .er-hd{font-family:${SANS};font-size:13px;font-weight:600;fill:#1f2937}
+  .er-nm{font-family:${SANS};font-size:12px;font-weight:400;fill:#1f2937}
+  .er-ty{font-family:${MONO};font-size:11px;fill:#8b95a7}
+  .er-mt{font-family:${SANS};font-size:10px;fill:#9aa5b5}
+  .er-ml{font-family:${SANS};font-size:10px;font-weight:800;letter-spacing:.09em}
+  .er-bd{font-family:${SANS};font-size:9px;font-weight:700;letter-spacing:.02em}
+  .er-rl{font-family:${SANS};font-size:10px;font-weight:600;fill:#5b6675}
+  .er-ft{font-family:${SANS};font-size:11px;font-weight:500;fill:#a9b2c0}
+  .er-card{fill:#fff;stroke:#e3e7ee;stroke-width:1}
+  .er-vh{opacity:0;transition:opacity .12s}
+  .er-tbl:hover .er-vh,.er-mod:hover > .er-vh{opacity:1}
+  .er-row:hover .er-rowbg{opacity:1}
+  .er-row{cursor:pointer}
+  .er-hit{fill:transparent}
+  .er-add{cursor:pointer}
+  .er-add:hover .er-ft{fill:#5b6b8c}
+  .er-add:hover .er-addbg{opacity:1}
+  .er-anchor{cursor:crosshair}
+  .er-anc{opacity:0;transition:opacity .12s;cursor:crosshair}
+  .er-anc.on{opacity:.5}
+  .er-anc.hot,.er-row:hover .er-anc{opacity:1}
+  .er-row.hot .er-rowbg{fill:#e8f7ef;opacity:1}
+  .er-row.hot.dup .er-rowbg{fill:#fdecec}
+  .er-rel{cursor:grab}
+  .er-rel:hover .er-ln{stroke:#6366f1}
+  .er-rel-end{cursor:grab}
+  .er-rel-end:hover circle:nth-of-type(2){fill:#6366f1;stroke:#fff}
+  #stage.is-unlinking,#stage.is-unlinking *{cursor:grabbing !important}
+</style>`;
+
+const DEFS = `<defs>
+  <filter id="er-sh" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="0" dy="1" stdDeviation="1.7" flood-color="#0f172a" flood-opacity="0.10"/>
+  </filter>
+  <filter id="er-sh2" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.14"/>
+  </filter>
+</defs>`;
+
+function pillGeom(m){
+  const label = (m.name || "MODULE").toUpperCase();
+  const twd = tw(label, FONT.label) + label.length * 0.9;
+  return {label, w: Math.round(twd + 42)};
+}
+
+function moduleMarkup(m){
+  const r = moduleRect(m);
+  const p = palOf(m);
+  const hot = (dropMod === m.id);
+  const isSel = sel && sel.kind === "module" && sel.id === m.id;
+  const pg = pillGeom(m);
+  const lw = pg.w;
+  const px = r.x + 13, py = r.y - 11;
+
+  let s = `<g class="er-mod" data-kind="module" data-id="${m.id}">`;
+  s += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="14" fill="${p.tint}"
+          stroke="${hot ? "#22a06b" : (isSel ? p.accent : p.border)}"
+          stroke-width="${hot || isSel ? 2 : 1.4}" stroke-dasharray="${hot ? "0" : "6 4"}"/>`;
+  if (isSel) s += `<rect x="${r.x-4}" y="${r.y-4}" width="${r.w+8}" height="${r.h+8}" rx="17" fill="none" stroke="${p.accent}" stroke-opacity=".22" stroke-width="3"/>`;
+
+  // 标签胶囊（含常驻色标）
+  s += `<g data-kind="mlabel" data-id="${m.id}" style="cursor:text">`;
+  s += `<rect x="${px}" y="${py}" width="${lw}" height="22" rx="11" fill="#fff" stroke="${p.border}" stroke-width="1.2"/>`;
+  s += `<text class="er-ml" x="${px + 12}" y="${py + 14.6}">${esc(pg.label)}</text>`;
+  s += `</g>`;
+  s += `<g data-kind="mcolor" data-id="${m.id}" style="cursor:pointer">`;
+  s += `<circle cx="${px + lw - 12}" cy="${py + 11}" r="9" fill="transparent"/>`;
+  s += `<circle cx="${px + lw - 12}" cy="${py + 11}" r="4.6" fill="${p.accent}"/>`;
+  s += `</g>`;
+
+  // 删除
+  s += `<g class="er-vh" data-kind="del-m" data-id="${m.id}" style="cursor:pointer">`;
+  s += `<circle cx="${r.x + r.w - 12}" cy="${r.y + 12}" r="8" fill="#fff" stroke="#f0d3d5"/>`;
+  s += `<path d="M${r.x + r.w - 15} ${r.y + 9}l6 6M${r.x + r.w - 9} ${r.y + 9}l-6 6" stroke="#c5393f" stroke-width="1.5" stroke-linecap="round"/>`;
+  s += `</g>`;
+  s += `</g>`;
+  return s;
+}
+
+/* 行锚点小圆点：平时隐去，悬停该行才显形 */
+function anchorMarkup(t, c, side, ax, cy, color, hot, cls, hcol){
+  const r1 = hot ? 7.6 : 5.2, r2 = hot ? 3.5 : 2.1;
+  const col = hot ? (hcol || "#22a06b") : color;
+  let s = `<g class="${cls}" data-kind="anchor" data-id="${t.id}" data-col="${c.id}" data-side="${side}">`;
+  s += `<circle class="er-hit" cx="${ax}" cy="${cy}" r="10"/>`;
+  s += `<circle cx="${ax}" cy="${cy}" r="${r1}" fill="#fff" stroke="${col}" stroke-width="1.5"/>`;
+  s += `<circle cx="${ax}" cy="${cy}" r="${r2}" fill="${col}"/>`;
+  s += `</g>`;
+  return s;
+}
+
+function tableMarkup(t, clean){
+  const m = getModule(t.moduleId);
+  if (!m) return "";
+  const p = palOf(m);
+  const L = tableLayout(t);
+  const x = t.x, y = t.y, w = L.w;
+  const isSel = sel && sel.kind === "table" && sel.id === t.id;
+  const dying = drag && drag.mode === "table" && drag.id === t.id && drag.invalid;
+  const conflict = !!(drag && drag.mode === "table" && drag.overT && drag.overT === t.id);
+  const linkMode = !!(drag && (drag.mode === "link" || (drag.mode === "unlink" && drag.moved)));
+  const dupMode = !!(linkMode && drag.dup);
+  const hotKey = (linkMode && drag.overCol) ? epKey(drag.overCol) : "";
+
+  let s = `<g class="er-tbl" data-kind="table" data-id="${t.id}" opacity="${drag && drag.mode==="table" && drag.id===t.id ? 0.96 : 1}">`;
+  // 卡片
+  s += `<rect class="er-card" x="${x}" y="${y}" width="${w}" height="${L.h}" rx="9" filter="url(#er-sh)" ${isSel ? `stroke="${p.accent}" stroke-width="1.6"` : ""}/>`;
+  if (dying) s += `<rect x="${x-1}" y="${y-1}" width="${w+2}" height="${L.h+2}" rx="10" fill="none" stroke="#e5484d" stroke-width="2" stroke-dasharray="5 3"/>`;
+  // 被撞上的那张表也给个红色提示，让人看清是跟谁撞了
+  if (conflict) s += `<rect x="${x-3.5}" y="${y-3.5}" width="${w+7}" height="${L.h+7}" rx="12" fill="none" stroke="#e5484d" stroke-width="2" stroke-dasharray="2 4" opacity=".85"/>`;
+  // 头部（上方圆角）
+  s += `<path d="M${x+9} ${y} H${x+w-9} A9 9 0 0 1 ${x+w} ${y+9} V${y+HEAD_H} H${x} V${y+9} A9 9 0 0 1 ${x+9} ${y} Z" fill="${p.head}"/>`;
+  s += `<path d="M${x+11} ${y+1.3} H${x+w-11}" stroke="${p.accent}" stroke-width="2.2" stroke-linecap="round"/>`;
+  s += `<path d="M${x} ${y+HEAD_H} H${x+w}" stroke="#e8ecf3" stroke-width="1"/>`;
+  // 表图标
+  s += `<g opacity=".75"><rect x="${x+12}" y="${y+12}" width="10" height="10" rx="2" fill="none" stroke="${p.accent}" stroke-width="1.2"/>`;
+  s += `<path d="M${x+12} ${y+15.4}h10M${x+15.4} ${y+12}v10" stroke="${p.accent}" stroke-width="1.1"/></g>`;
+  // 标题
+  s += `<g data-kind="title" data-id="${t.id}" style="cursor:text">`;
+  s += `<rect x="${x+26}" y="${y+6}" width="${w-52}" height="${HEAD_H-9}" fill="transparent"/>`;
+  s += `<text class="er-hd" x="${x + w/2}" y="${y + HEAD_H/2 + 4.6}" text-anchor="middle">${esc(fitText(t.name, w-56, FONT.title))}</text>`;
+  s += `</g>`;
+  // 明细开关 + 删除
+  if (!clean){
+    const mx = x + w - 37, my = y + 13;
+    const on = !!t.showMeta;
+    s += `<g class="${on ? "" : "er-vh"}" data-kind="toggle-meta" data-id="${t.id}" style="cursor:pointer">`;
+    s += `<circle cx="${mx}" cy="${my}" r="8" fill="${on ? "#eef2ff" : "#fff"}" stroke="${on ? p.accent : "#e2e7f0"}"/>`;
+    s += `<circle cx="${mx}" cy="${my - 2.8}" r="0.95" fill="${on ? p.accent : "#7b8798"}"/>`;
+    s += `<path d="M${mx} ${my - 0.4}v4.2" stroke="${on ? p.accent : "#7b8798"}" stroke-width="1.5" stroke-linecap="round"/>`;
+    s += `<title>${on ? "收起明细" : "展开明细（中文名 / 非空 / 默认值）"}</title></g>`;
+
+    s += `<g class="er-vh" data-kind="del-t" data-id="${t.id}" style="cursor:pointer">`;
+    s += `<circle cx="${x + w - 13}" cy="${y + 13}" r="8" fill="#fff" stroke="#f0d3d5"/>`;
+    s += `<path d="M${x+w-16} ${y+10}l6 6M${x+w-10} ${y+10}l-6 6" stroke="#c5393f" stroke-width="1.5" stroke-linecap="round"/>`;
+    s += `</g>`;
+  }
+
+  // 列
+  if (t.cols.length === 0){
+    s += `<text class="er-ft" x="${x + w/2}" y="${y + HEAD_H + ROW_H/2 + 4}" text-anchor="middle">暂无列</text>`;
+  }
+  t.cols.forEach((c, i) => {
+    const ry = y + HEAD_H + L.rowTop[i];
+    const rh = L.rowH[i];
+    const cy = ry + ROW_H/2;
+    const isHot = !!hotKey && hotKey === (t.id + "|" + c.id);
+    s += `<g class="er-row${isHot ? " hot" : ""}${isHot && dupMode ? " dup" : ""}" data-kind="col" data-id="${t.id}" data-col="${c.id}">`;
+    s += `<rect class="er-rowbg" x="${x+1}" y="${ry}" width="${w-2}" height="${rh}" fill="#f6f8fc" opacity="0"/>`;
+    let bx = x + 13;
+    for (const b of badges(c)){
+      const col = b === "PK" ? {bg:"#ede9fe", fg:"#6d4bd8"} : b === "FK" ? {bg:"#fef1e2", fg:"#c2761a"} : {bg:"#eef2f7", fg:"#7b8798"};
+      s += `<rect x="${bx}" y="${ry + 6}" width="22" height="14" rx="4" fill="${col.bg}"/>`;
+      s += `<text class="er-bd" x="${bx + 11}" y="${ry + 6 + 10}" text-anchor="middle" fill="${col.fg}">${b}</text>`;
+      bx += 26;
+    }
+    s += `<text class="er-nm" x="${x + L.nameX}" y="${ry + ROW_H/2 + 4.3}">${esc(fitText(c.name || "", Math.max(24, L.nameMaxW), FONT.name))}</text>`;
+    s += `<text class="er-ty" x="${x + w - 13}" y="${ry + ROW_H/2 + 4.1}" text-anchor="end">${esc(fitText(c.type || "", Math.max(30, w - L.nameX - 40), FONT.type))}</text>`;
+    // 展开明细时，列名下方补一行中文名 / 非空 / 默认值
+    const ml = t.showMeta ? metaLine(c) : "";
+    if (ml) s += `<text class="er-mt" x="${x + L.nameX}" y="${ry + ROW_H + 12}">${esc(fitText(ml, Math.max(40, w - L.nameX - 16), FONT.meta))}</text>`;
+
+    // 列锚点：PK 在行的右端，FK 在行的左端（同为 PK+FK 时两端都有）
+    if (!clean && (c.pk || c.fk)){
+      const cls = "er-anc" + (linkMode ? " on" : "") + (isHot ? " hot" : "");
+      const sides = new Set();
+      if (c.fk) sides.add("L");
+      if (c.pk) sides.add("R");
+      const used = sideUse && sideUse.get(t.id + "|" + c.id);
+      if (used) used.forEach(sd => sides.add(sd));      // 布局翻转后真正接线的那一侧
+      for (const sd of sides) s += anchorMarkup(t, c, sd, sd === "L" ? x : x + w, cy, p.accent, isHot, cls, dupMode ? "#e5484d" : "#22a06b");
+    }
+    s += `</g>`;
+  });
+
+  // 底部：添加列 | 导入字段（左半/右半）
+  const fy = y + HEAD_H + Math.max(L.bodyH, ROW_H);
+  if (!clean){
+    const half = Math.round(w / 2);
+    s += `<path d="M${x} ${fy} H${x+w}" stroke="#eef1f6" stroke-width="1"/>`;
+    s += `<path d="M${x+half} ${fy+6} V${fy+FOOT_H-6}" stroke="#eef1f6" stroke-width="1"/>`;
+    s += `<g class="er-add" data-kind="addcol" data-id="${t.id}">`;
+    s += `<rect class="er-addbg" x="${x+1}" y="${fy}" width="${half-2}" height="${FOOT_H}" fill="#f8fafd" opacity="0"/>`;
+    s += `<text class="er-ft" x="${x + half/2}" y="${fy + FOOT_H/2 + 4}" text-anchor="middle">＋ 添加列</text>`;
+    s += `</g>`;
+    s += `<g class="er-add" data-kind="impcol" data-id="${t.id}">`;
+    s += `<rect class="er-addbg" x="${x+half+1}" y="${fy}" width="${w-half-2}" height="${FOOT_H}" fill="#f8fafd" opacity="0"/>`;
+    s += `<text class="er-ft" x="${x + half + (w-half)/2}" y="${fy + FOOT_H/2 + 4}" text-anchor="middle">⇥ 导入字段</text>`;
+    s += `</g>`;
+  }
+
+  // 整表兜底锚点：仅当这张表还没有任何 PK/FK 列时出现，先把关系连起来，标注后自动细化到列
+  if (!clean && !t.cols.some(c => c.pk || c.fk)){
+    const ay = y + HEAD_H + (L.h - HEAD_H)/2;
+    s += `<g class="er-vh er-anchor" data-kind="anchor" data-id="${t.id}" data-col="" data-side="R">`;
+    s += `<circle class="er-hit" cx="${x + w}" cy="${ay}" r="10"/>`;
+    s += `<circle cx="${x + w}" cy="${ay}" r="5" fill="#fff" stroke="#9aa5b5" stroke-width="1.4" stroke-dasharray="2.5 2"/>`;
+    s += `<circle cx="${x + w}" cy="${ay}" r="1.7" fill="#9aa5b5"/>`;
+    s += `</g>`;
+  }
+
+  s += `</g>`;
+  return s;
+}
+
+function endMark(pt, d, kind, color){
+  const perp = {x:-d.y, y:d.x};
+  let s = "";
+  if (kind === "many"){
+    const bx = pt.x + d.x*11, by = pt.y + d.y*11;
+    const t1 = {x:pt.x + perp.x*7, y:pt.y + perp.y*7};
+    const t2 = {x:pt.x - perp.x*7, y:pt.y - perp.y*7};
+    s += `<path d="M${bx} ${by} L${pt.x} ${pt.y} M${bx} ${by} L${t1.x} ${t1.y} M${bx} ${by} L${t2.x} ${t2.y}"
+             stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`;
+  } else {
+    const bx = pt.x + d.x*9, by = pt.y + d.y*9;
+    s += `<path d="M${bx - perp.x*6.5} ${by - perp.y*6.5} L${bx + perp.x*6.5} ${by + perp.y*6.5}"
+             stroke="${color}" stroke-width="1.8" stroke-linecap="round"/>`;
+  }
+  return s;
+}
+
+function relLineMarkup(r, clean){
+  const g = relGeom(r);
+  if (!g) return "";
+  const isSel = !clean && sel && sel.kind === "rel" && sel.id === r.id;
+  const unlink = !clean && !!(drag && drag.mode === "unlink" && drag.id === r.id && drag.moved);
+  const color = isSel ? "#6366f1" : "#9aa5b5";
+  const dash = r.type === "N:N" ? "6 4" : (r.type === "1:1" ? "3 3" : "0");
+  const a1 = r.type === "1:1" || r.type === "1:N" ? "one" : "many";
+  const a2 = r.type === "1:1" ? "one" : "many";
+
+  // 拔线中：这条线只剩「还没被拽走的那一端」有意义，整体压淡
+  let s = `<g class="er-rel" data-kind="rel" data-id="${r.id}"${unlink ? ` opacity=".28"` : ""}>`;
+  s += `<path d="${g.path}" stroke="transparent" stroke-width="16" fill="none"/>`;
+  s += `<path class="er-ln" d="${g.path}" stroke="${color}" stroke-width="${isSel ? 2.2 : 1.6}" fill="none"
+          ${dash === "0" ? "" : `stroke-dasharray="${dash}"`} stroke-linecap="round"/>`;
+  s += endMark(g.A.p, g.A.d, a1, color);
+  s += endMark(g.B.p, g.B.d, a2, color);
+  s += `</g>`;
+  return s;
+}
+
+function relLabelMarkup(r, clean){
+  const g = relGeom(r);
+  if (!g) return "";
+  const isSel = !clean && sel && sel.kind === "rel" && sel.id === r.id;
+  const txt = r.label && r.label.trim() ? r.label.trim() : ({ "1:1":"1 : 1", "1:N":"1 : N", "N:N":"N : N" })[r.type];
+  const wTxt = tw(txt, FONT.rel) + 18;
+  // 环线（自引用 / 同侧绕行）的标签挪到弧线外侧，避免压线
+  const lx = g.mid.x + (g.loop ? wTxt/2 + 6 : 0);
+  let s = `<g data-kind="rel-label" data-id="${r.id}" style="cursor:pointer">`;
+  s += `<rect x="${lx - wTxt/2}" y="${g.mid.y - 9}" width="${wTxt}" height="18" rx="9"
+          fill="#fff" stroke="${isSel ? "#c7d2fe" : "#e6eaf1"}" stroke-width="1"/>`;
+  s += `<text class="er-rl" x="${lx}" y="${g.mid.y + 3.6}" text-anchor="middle" fill="${isSel ? "#4338ca" : "#5b6675"}">${esc(txt)}</text>`;
+  s += `</g>`;
+
+  // 选中后两端冒出把手：按住任意一端就能把这条线拽下来（改连 / 断开）
+  if (isSel){
+    const [ea, eb] = relEnds(r);
+    const knob = (pt, side, ep) => {
+      const t = getTable(ep.t), c = ep.c ? colOf(ep.t, ep.c) : null;
+      const name = t ? (t.name + (c ? "." + c.name : "")) : "";
+      return `<g class="er-rel-end" data-kind="rel-end" data-id="${r.id}" data-side="${side}">
+        <circle class="er-hit" cx="${pt.x}" cy="${pt.y}" r="11"/>
+        <circle cx="${pt.x}" cy="${pt.y}" r="4.8" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+        <circle cx="${pt.x}" cy="${pt.y}" r="1.5" fill="#6366f1"/>
+        <title>拖动可断开或改连：${esc(name)}</title>
+      </g>`;
+    };
+    s += knob(g.A.p, "a", ea) + knob(g.B.p, "b", eb);
+  }
+  return s;
+}
+
+/* =========================================================
+   6. 渲染
+   ========================================================= */
+const stage   = document.getElementById("stage");
+const wrap    = document.getElementById("wrap");
+const layer   = document.getElementById("layer");
+const emptyEl = document.getElementById("empty");
+const zoomLab = document.getElementById("zoomLab");
+
+function render(){
+  syncModuleBoxes();                 // 让空模块记住内容最后的位置（拖拽中无副作用）
+  const W = wrap.clientWidth || 1000, H = wrap.clientHeight || 700;
+  stage.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  stage.innerHTML = SVG_STYLE
+    + `<g id="world" transform="translate(${view.x} ${view.y}) scale(${view.k})">`
+    + DEFS + innerWorld()
+    + `</g>`;
+  emptyEl.style.display = S.modules.length ? "none" : "grid";
+  zoomLab.textContent = Math.round(view.k * 100) + "%";
+  updateGrid();
+  positionPopover();
+  saveSoon();
+}
+
+/* 拖表时预告「模块会朝这个方向多长出多少」：只画多出来的那一条，不糊住原有内容 */
+function growMarkup(g, base, pal){
+  const bands = [];
+  if (g.y < base.y)                bands.push({x:g.x, y:g.y, w:g.w, h:base.y - g.y});
+  if (g.y + g.h > base.y + base.h) bands.push({x:g.x, y:base.y + base.h, w:g.w,
+                                               h:g.y + g.h - base.y - base.h});
+  if (g.x < base.x)                bands.push({x:g.x, y:g.y, w:base.x - g.x, h:g.h});
+  if (g.x + g.w > base.x + base.w) bands.push({x:base.x + base.w, y:g.y,
+                                               w:g.x + g.w - base.x - base.w, h:g.h});
+  let s = `<g pointer-events="none">`;
+  for (const b of bands){
+    if (b.w <= 0 || b.h <= 0) continue;
+    s += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="2"
+            fill="${pal.accent}" fill-opacity=".11" stroke="${pal.accent}"
+            stroke-width="1.4" stroke-dasharray="6 4"/>`;
+  }
+  s += `</g>`;
+  return s;
+}
+
+/* 对齐辅助线：细虚线 + 两端小刻度，压在内容最上层 */
+function guidesMarkup(g){
+  if (!g) return "";
+  const C = "#3b82f6";
+  const line = (x1, y1, x2, y2, w) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${C}"
+       stroke-width="${w}" stroke-linecap="round"${w < 1.5 ? ' stroke-dasharray="4 3"' : ""}/>`;
+  let s = `<g pointer-events="none" opacity=".95">`;
+  for (const v of g.vs){
+    s += line(v.v, v.a - 12, v.v, v.b + 12, 1.1);
+    s += line(v.v - 4, v.a, v.v + 4, v.a, 1.8);
+    s += line(v.v - 4, v.b, v.v + 4, v.b, 1.8);
+  }
+  for (const h of g.hs){
+    s += line(h.a - 12, h.v, h.b + 12, h.v, 1.1);
+    s += line(h.a, h.v - 4, h.a, h.v + 4, 1.8);
+    s += line(h.b, h.v - 4, h.b, h.v + 4, 1.8);
+  }
+  return s + `</g>`;
+}
+
+function innerWorld(){
+  sideUse = buildSideUse();
+  let s = "";
+  // 生长预览画在模块之前：重叠的部分被模块盖住，只留模块外那一条
+  if (drag && drag.mode === "table" && drag.growRect){
+    const gm = getModule(drag.overMod) || getModule(getTable(drag.id).moduleId);
+    if (gm) s += growMarkup(drag.growRect, moduleRect(gm), palOf(gm));
+  }
+  for (const m of S.modules) s += moduleMarkup(m);
+  for (const r of S.rels) s += relLineMarkup(r);
+  for (const t of S.tables) s += tableMarkup(t, false);
+  for (const r of S.rels) s += relLabelMarkup(r);
+  if (drag && drag.mode === "table" && drag.snap){
+    const t = getTable(drag.id);
+    if (t){
+      const L = tableLayout(t);
+      const p = palOf(getModule(drag.overMod || t.moduleId) || {colorIdx:0});
+      s += `<g pointer-events="none"><rect x="${drag.snap.x}" y="${drag.snap.y}" width="${L.w}" height="${L.h}" rx="9"
+              fill="${p.accent}" fill-opacity=".07" stroke="${p.accent}" stroke-width="1.6" stroke-dasharray="7 5"/>
+              <text class="er-ft" x="${drag.snap.x + L.w/2}" y="${drag.snap.y + L.h/2 + 4}" text-anchor="middle">落在空位</text></g>`;
+    }
+  }
+  if (drag && (drag.mode === "link" || drag.mode === "unlink") && drag.tmp){
+    const g = drag.tmp;
+    const lc = drag.dup ? "#e5484d" : "#6366f1";
+    s += `<path d="M${g.x0} ${g.y0} L${g.x1} ${g.y1}" stroke="${lc}" stroke-width="1.8"
+            stroke-dasharray="5 4" fill="none" stroke-linecap="round"/>`;
+    s += `<circle cx="${g.x1}" cy="${g.y1}" r="4" fill="#fff" stroke="${lc}" stroke-width="1.8"/>`;
+    // 拔线时落在空白：明确告诉用户松手会发生什么（断开是破坏性操作）
+    if (drag.mode === "unlink" && drag.moved && !drag.overCol){
+      s += `<g pointer-events="none"><rect x="${g.x1 + 9}" y="${g.y1 - 11}" width="72" height="20" rx="10"
+              fill="#fff" stroke="#f0d3d5"/>
+            <text class="er-rl" x="${g.x1 + 45}" y="${g.y1 + 2.6}" text-anchor="middle" fill="#c5393f">松手即断开</text></g>`;
+    }
+  }
+  if (drag && drag.guides && (drag.mode === "module" || drag.mode === "table"))
+    s += guidesMarkup(drag.guides);
+  return s;
+}
+
+function updateGrid(){
+  const k = view.k, g = 20 * k;
+  wrap.style.backgroundSize = g + "px " + g + "px";
+  wrap.style.backgroundPosition = view.x + "px " + view.y + "px";
+}
+
+/* =========================================================
+   7. 视口
+   ========================================================= */
+function contentBBox(){
+  if (!S.modules.length) return {x:0, y:0, w:900, h:600};
+  let x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
+  for (const m of S.modules){
+    const r = moduleRect(m);
+    x1 = Math.min(x1, r.x - 16); y1 = Math.min(y1, r.y - 22);
+    x2 = Math.max(x2, r.x + r.w + 16); y2 = Math.max(y2, r.y + r.h + 16);
+  }
+  return {x:x1, y:y1, w:x2 - x1, h:y2 - y1};
+}
+function fit(){
+  const bb = contentBBox();
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const k = clamp(Math.min((W - 90) / bb.w, (H - 90) / bb.h), 0.25, 1.6);
+  view.k = k;
+  view.x = (W - bb.w * k) / 2 - bb.x * k;
+  view.y = (H - bb.h * k) / 2 - bb.y * k;
+  render();
+}
+function zoomAt(f, sx, sy){
+  const k2 = clamp(view.k * f, 0.25, 2.6);
+  if (Math.abs(k2 - view.k) < 0.001) return;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  sx = sx == null ? W/2 : sx; sy = sy == null ? H/2 : sy;
+  view.x = sx - (sx - view.x) * (k2 / view.k);
+  view.y = sy - (sy - view.y) * (k2 / view.k);
+  view.k = k2;
+  render();
+}
+
+const toWorld = (cx, cy) => {
+  const r = stage.getBoundingClientRect();
+  return {x:(cx - r.left - view.x) / view.k, y:(cy - r.top - view.y) / view.k};
+};
+const toLocal = (cx, cy) => {
+  const r = stage.getBoundingClientRect();
+  return {x:cx - r.left, y:cy - r.top};
+};
+
+/* =========================================================
+   8. 数据操作
+   ========================================================= */
+function addModule(worldPt, colorIdx){
+  const m = {id:uid("m"), name:"新模块", x:Math.round(worldPt.x), y:Math.round(worldPt.y),
+             w:M_MIN_W, h:M_MIN_H,
+             colorIdx: colorIdx == null ? (S.modules.length % PALETTES.length) : colorIdx};
+  S.modules.push(m);
+  return m;
+}
+function addTable(moduleId, worldPt){
+  const m = getModule(moduleId);
+  if (!m) return null;
+  const t = {id:uid("t"), moduleId, name:"新表",
+             x:Math.round(worldPt.x), y:Math.round(worldPt.y),
+             showMeta:false,
+             cols:[
+               {id:uid("c"), name:"id", type:"bigint", pk:true, fk:false, uk:false},
+               {id:uid("c"), name:"name", type:"varchar(64)", pk:false, fk:false, uk:false}
+             ]};
+  S.tables.push(t);
+  return t;
+}
+function addColumn(t){
+  const c = {id:uid("c"), name:"new_column", type:"varchar(64)",
+             pk:false, fk:false, uk:false, comment:"", nn:false, def:""};
+  t.cols.push(c);
+  return c;
+}
+function delTable(id){
+  const t = getTable(id);
+  if (!t) return;
+  const rels = S.rels.filter(r => relTableIds(r).includes(id));
+  S.rels = S.rels.filter(r => !relTableIds(r).includes(id));
+  S.tables = S.tables.filter(x => x.id !== id);
+  if (sel && sel.id === id) sel = null;
+  render(); snap();
+  if (rels.length) toast(`已删除表「${t.name}」及其 ${rels.length} 条关系`);
+}
+function delModule(id){
+  const m = getModule(id);
+  if (!m) return;
+  const kids = S.tables.filter(t => t.moduleId === id);
+  const ids = kids.map(t => t.id);
+  S.rels = S.rels.filter(r => !relTableIds(r).some(tid => ids.includes(tid)));
+  S.tables = S.tables.filter(t => t.moduleId !== id);
+  S.modules = S.modules.filter(x => x.id !== id);
+  if (sel && (sel.id === id || ids.includes(sel.id))) sel = null;
+  render(); snap();
+  toast(kids.length ? `已删除模块「${m.name}」及其中 ${kids.length} 张表` : `已删除模块「${m.name}」`);
+}
+function addRel(fromEp, toEp){
+  let A = epOf(fromEp), B = epOf(toEp);
+  if (!A.t || !B.t) return;
+  if (A.t === B.t && (!A.c || A.c === B.c)){
+    toast("自引用要连同一张表里的两个不同列", true); return;
+  }
+  // 归一化：PK 端永远作 from（「一」），FK 端作 to（「多」），与手拖方向无关
+  const rank = e => { const c = colOf(e.t, e.c); return c ? (c.fk && !c.pk ? 2 : (c.pk ? 0 : 1)) : 1; };
+  if (rank(A) > rank(B)){ const tmp = A; A = B; B = tmp; }
+  const k1 = epKey(A) + ">" + epKey(B), k2 = epKey(B) + ">" + epKey(A);
+  if (S.rels.some(r => { const [x, y] = relEnds(r); const k = epKey(x) + ">" + epKey(y); return k === k1 || k === k2; })){
+    toast("这两列之间已有连线", true); return;
+  }
+  const r = {id:uid("r"), from:{t:A.t, c:A.c}, to:{t:B.t, c:B.c}, type:"1:N", label:""};
+  S.rels.push(r);
+  sel = {kind:"rel", id:r.id};
+  render(); snap();
+  openRelPop(r.id);
+}
+
+/* 表的位置不再被钳到模块右下角 —— 模块会顺着表的方向生长。
+   这里只做取整与归属校验。 */
+function normalizeTable(t){
+  const m = getModule(t.moduleId);
+  if (!m) return false;
+  t.x = Math.round(t.x); t.y = Math.round(t.y);
+  return true;
+}
+/* extraH：额外在下沿预留的高度，保证模块之后还能往下长（放得进一张表） */
+function moduleCollides(m, extraH, live){
+  const base = moduleRect(m, live);
+  const r = extraH ? {x:base.x, y:base.y, w:base.w, h:base.h + extraH} : base;
+  for (const o of S.modules){
+    if (o.id === m.id) continue;
+    if (overlap(r, moduleRect(o), 10)) return o;
+  }
+  return null;
+}
+
+/* 表与表之间同样不允许重叠（跨模块，全局面检查） */
+const tableRect = t => { const L = tableLayout(t); return {x:t.x, y:t.y, w:L.w, h:L.h}; };
+function tableHit(t, gap){
+  const r = tableRect(t);
+  for (const o of S.tables){
+    if (o.id === t.id) continue;
+    if (overlap(r, tableRect(o), gap == null ? 8 : gap)) return o;
+  }
+  return null;
+}
+
+/* =========================================================
+   9. 指针交互
+   ========================================================= */
+stage.addEventListener("pointerdown", onDown);
+
+/* 兜底：部分浏览器对 SVG 文字不完全遵守 user-select，
+   这里直接掐掉整个应用内的 selectstart，输入框除外 */
+document.addEventListener("selectstart", e => {
+  if (e.target && e.target.closest && e.target.closest("input,textarea,[contenteditable='true']")) return;
+  e.preventDefault();
+});
+
+function clearTextSelection(){
+  const s = window.getSelection && window.getSelection();
+  if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
+}
+
+function onDown(e){
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  clearTextSelection();          // 清掉上一轮残留的选区，避免拖拽完还是满屏蓝底
+  const hit = e.target.closest ? e.target.closest("[data-kind]") : null;
+  const kind = hit ? hit.dataset.kind : "bg";
+  const id = hit ? hit.dataset.id : null;
+  const col = hit ? hit.dataset.col : null;
+
+  // 点画布任意位置先收起浮层；点标签会立刻重新打开
+  closePops();
+
+  const loc = toLocal(e.clientX, e.clientY);
+  const wpt = toWorld(e.clientX, e.clientY);
+
+  // 空白：平移
+  if (kind === "bg"){
+    sel = null; render();
+    drag = {mode:"pan", sx:e.clientX, sy:e.clientY, vx:view.x, vy:view.y};
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+    wrap.style.cursor = "grabbing";
+    return;
+  }
+
+  // 连线锚点（列级）
+  if (kind === "anchor"){
+    const t = getTable(id); if (!t) return;
+    const colId = hit.dataset.col || null;
+    const side = hit.dataset.side || "R";
+    const L = tableLayout(t);
+    const c = colId ? t.cols.find(x => x.id === colId) : null;
+    const a = c ? colAnchorAt(t, c, side)
+                : {p:{x:t.x + L.w, y:t.y + HEAD_H + (L.h - HEAD_H)/2}, d:{x:1, y:0}};
+    drag = {mode:"link", from:{t:id, c:colId}, fromSide:side,
+            tmp:{x0:a.p.x, y0:a.p.y, x1:wpt.x, y1:wpt.y},
+            sx:e.clientX, sy:e.clientY, over:null, overCol:null};
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+    render();
+    return;
+  }
+
+  // 关系线：单击 = 选中（不再弹窗）；按住拖动 = 把离光标近的那一端拔下来
+  if (kind === "rel" || kind === "rel-end"){
+    const r = S.rels.find(x => x.id === id);
+    if (!r) return;
+    sel = {kind:"rel", id};
+    render();
+    const g = relGeom(r);
+    if (!g) return;
+    let side = hit.dataset.side || "";
+    if (side !== "a" && side !== "b"){
+      const dA = Math.hypot(wpt.x - g.A.p.x, wpt.y - g.A.p.y);
+      const dB = Math.hypot(wpt.x - g.B.p.x, wpt.y - g.B.p.y);
+      side = dA <= dB ? "a" : "b";
+    }
+    drag = {mode:"unlink", id, side, sx:e.clientX, sy:e.clientY, moved:false,
+            tmp:{x0:0, y0:0, x1:wpt.x, y1:wpt.y}, over:null, overCol:null, dup:false};
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+    return;
+  }
+
+  // 线上那个小标签：只有点它才弹关系弹窗
+  if (kind === "rel-label"){
+    sel = {kind:"rel", id};
+    render();
+    openRelPop(id);
+    return;
+  }
+
+  // 立即动作
+  if (kind === "addcol"){
+    const t = getTable(id); if (!t) return;
+    const c = addColumn(t);
+    if (tableHit(t) || moduleCollides(getModule(t.moduleId))){
+      if (seekTableSpot(t, {x:t.x, y:t.y})){
+        revealRect(tableRect(t));
+        toast("表变高了，已自动错开下方的表");
+      }
+      else {
+        t.cols = t.cols.filter(x => x.id !== c.id);
+        render();
+        toast("这一列加不下 —— 会与其他表或模块重叠，请先腾出空间", true);
+        return;
+      }
+    }
+    render(); snap();
+    openColPop(id, c.id, true);
+    return;
+  }
+  if (kind === "del-t"){ delTable(id); return; }
+  if (kind === "del-m"){ delModule(id); return; }
+  if (kind === "mcolor"){ openColorMenu(id); return; }
+  if (kind === "toggle-meta"){
+    const t = getTable(id); if (!t) return;
+    t.showMeta = !t.showMeta;
+    if (t.showMeta && (tableHit(t) || moduleCollides(getModule(t.moduleId)))){
+      if (seekTableSpot(t, {x:t.x, y:t.y})) toast("表变高了，已自动错开下方的表");
+      else { t.showMeta = false; render(); toast("空间不够展开明细，先挪一挪表", true); return; }
+    }
+    render(); snap();
+    return;
+  }
+  if (kind === "impcol"){ openDdlImport("table", id); return; }
+
+  // 可拖动 / 可点击
+  let target = null;
+  if (kind === "module" || kind === "mlabel") target = {type:"module", id};
+  if (kind === "table"  || kind === "title" || kind === "col") target = {type:"table", id, col};
+
+  if (target){
+    press = {
+      type: target.type, id: target.id, col: target.col || null,
+      kind, sx:e.clientX, sy:e.clientY, moved:false,
+      world: wpt
+    };
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+  }
+}
+
+stage.addEventListener("pointermove", onMove);
+function onMove(e){
+  if (drag && drag.mode === "pan"){
+    view.x = drag.vx + (e.clientX - drag.sx);
+    view.y = drag.vy + (e.clientY - drag.sy);
+    updateGrid();
+    stage.querySelector("#world").setAttribute("transform", `translate(${view.x} ${view.y}) scale(${view.k})`);
+    return;
+  }
+
+  if (drag && drag.mode === "link"){
+    const wpt = toWorld(e.clientX, e.clientY);
+    drag.tmp.x1 = wpt.x; drag.tmp.y1 = wpt.y;
+    const hitT = tableAtPoint(wpt);
+    drag.over = hitT ? hitT.id : null;
+    let oc = null;
+    if (hitT){
+      const c = pickDropCol(hitT, wpt, drag.from);
+      if (c) oc = {t:hitT.id, c:c.id};
+    }
+    drag.overCol = oc;
+    drag.dup = !!(oc && pairExists(drag.from, oc));
+    if (oc){
+      // 吸附：预览线直接落到真实锚点上
+      const tt = getTable(oc.t), tc = colOf(oc.t, oc.c);
+      const sft = getTable(drag.from.t);
+      if (tt && tc && sft){
+        const a2 = colAnchorAt(tt, tc, relSides(sft, tt).b);
+        drag.tmp.x1 = a2.p.x; drag.tmp.y1 = a2.p.y;
+      }
+    }
+    render();
+    return;
+  }
+
+  if (drag && drag.mode === "unlink"){
+    if (!drag.moved){
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;   // 还没算拖，先当单击
+      drag.moved = true;
+      stage.classList.add("is-unlinking");
+      const r0 = S.rels.find(x => x.id === drag.id);
+      const g0 = r0 && relGeom(r0);
+      if (g0){
+        const fp = drag.side === "a" ? g0.B.p : g0.A.p;   // 留在线上的另一端
+        drag.tmp.x0 = fp.x; drag.tmp.y0 = fp.y;
+      }
+    }
+    const r = S.rels.find(x => x.id === drag.id);
+    if (!r){ drag = null; stage.classList.remove("is-unlinking"); render(); return; }
+    const fixedEp = drag.side === "a" ? epOf(r.to) : epOf(r.from);
+    const wpt = toWorld(e.clientX, e.clientY);
+    drag.tmp.x1 = wpt.x; drag.tmp.y1 = wpt.y;
+    const hitT = tableAtPoint(wpt);
+    drag.over = hitT ? hitT.id : null;
+    let oc = null;
+    if (hitT){
+      const c = pickDropCol(hitT, wpt, fixedEp);
+      if (c) oc = {t:hitT.id, c:c.id};
+    }
+    drag.overCol = oc;
+    drag.dup = !!(oc && pairExists(fixedEp, oc, r.id));
+    if (oc){
+      const tt = getTable(oc.t), tc = colOf(oc.t, oc.c), ft = getTable(fixedEp.t);
+      if (tt && tc && ft){
+        const a2 = colAnchorAt(tt, tc, relSides(ft, tt).b);
+        drag.tmp.x1 = a2.p.x; drag.tmp.y1 = a2.p.y;
+      }
+    }
+    render();
+    return;
+  }
+
+  if (drag && drag.mode === "module"){
+    const dx = (e.clientX - drag.sx) / view.k;
+    const dy = (e.clientY - drag.sy) / view.k;
+    const m = getModule(drag.id); if (!m) return;
+    const lx = drag.lx, ly = drag.ly;
+    // 与 moveModule 的取整保持一致，否则辅助线会和实际落点差半像素
+    const ax = Math.round(drag.ox + dx) - drag.ox;
+    const ay = Math.round(drag.oy + dy) - drag.oy;
+    const base = drag.base || (drag.base = moduleRect(m));
+    // 按住 Alt 临时关掉吸附，需要精确微调时用
+    const sn = e.altKey ? {dx:0, dy:0, guides:null} : alignSnap(base, ax, ay, m.id);
+    const tryMove = (gx, gy) => { moveModule(drag, gx, gy); return !moduleCollides(m); };
+    if (tryMove(ax + sn.dx, ay + sn.dy)){
+      drag.guides = sn.guides; drag.blocked = false;
+      drag.lx = m.x; drag.ly = m.y;
+    } else if ((sn.dx || sn.dy) && tryMove(ax, ay)){
+      drag.guides = null; drag.blocked = false;          // 吸上去反而撞了 → 退回不吸附
+      drag.lx = m.x; drag.ly = m.y;
+    } else {
+      moveModule(drag, lx - drag.ox, ly - drag.oy);     // 回退到上一合法位置
+      drag.blocked = true; drag.guides = null;
+    }
+    render();
+    return;
+  }
+
+  if (drag && drag.mode === "table"){
+    const dx = (e.clientX - drag.sx) / view.k;
+    const dy = (e.clientY - drag.sy) / view.k;
+    const t = getTable(drag.id); if (!t) return;
+    const nx = Math.round(drag.ox + dx), ny = Math.round(drag.oy + dy);
+    // 判断光标所在模块（用于换模块）；边界外 DROP_TOL 以内也算，让模块朝那边长
+    const at = toWorld(e.clientX, e.clientY);
+    const tm = moduleAtPoint(at, DROP_TOL);
+    // 对齐吸附：先算，再确认它不会把「本来放得下的位置」变成压表 / 撑爆模块
+    let sn = {dx:0, dy:0, guides:null};
+    if (!e.altKey){
+      const guess = tableSnap(t, nx, ny);
+      if (guess.guides){
+        const keep = t.moduleId;
+        if (tm) t.moduleId = tm.id;
+        t.x = nx + guess.dx; t.y = ny + guess.dy;
+        // 必须用 live 矩形：拖动中 moduleRect 默认读 _orig（起点），会把表算回原位
+        const bad = !!tableHit(t) || (tm ? !!moduleCollides(tm, 0, true) : false);
+        t.moduleId = keep;
+        if (!bad) sn = guess;
+      }
+    }
+    t.x = nx + sn.dx;
+    t.y = ny + sn.dy;
+    drag.guides = sn.guides;
+    const hitT = tableHit(t);
+    drag.overMod = tm ? tm.id : null;
+    drag.overT = hitT ? hitT.id : null;
+    drag.invalid = !tm;
+    // 落点不合法（压到别的表 / 会把模块撑到撞邻居）→ 预先算出就近空位并画出来
+    drag.snap = null;
+    if (tm && !drag.wasHit){
+      const needFix = !!hitT || (() => {
+        const keep = t.moduleId; t.moduleId = tm.id;
+        const bad = moduleCollides(tm, 0, true);   // live：按表当前位置算，别用拖动起点的 _orig
+        t.moduleId = keep;
+        return !!bad;
+      })();
+      if (needFix){
+        const spot = tableSpotFor(t, at, false, tm.id);
+        if (!spot) drag.invalid = true;               // 连空位都没有 → 真的放不下
+        else if (spot.x !== Math.round(t.x) || spot.y !== Math.round(t.y)) drag.snap = spot;
+      }
+    }
+    // 模块将扩张到哪：与当前矩形不同就画虚线框。
+    // 已经吸附过就按吸附位置算，否则预览框会和「落在空位」的虚线框打架。
+    drag.growRect = null;
+    if (tm){
+      const ox = t.x, oy = t.y;
+      if (drag.snap){ t.x = drag.snap.x; t.y = drag.snap.y; }
+      const next = expectModuleRect(t, tm);
+      t.x = ox; t.y = oy;
+      if (!sameRect(next, moduleRect(tm))) drag.growRect = next;
+    }
+    dropMod = tm ? tm.id : null;
+    render();
+    return;
+  }
+
+  if (press && !press.moved){
+    if (Math.hypot(e.clientX - press.sx, e.clientY - press.sy) > 4){
+      press.moved = true;
+      startDragFromPress(e);
+    }
+  }
+  if (drag && drag.mode === "module") return;
+}
+
+function startDragFromPress(e){
+  const p = press;
+  stage.classList.add("is-dragging");
+  if (p.type === "module"){
+    const m = getModule(p.id);
+    drag = {mode:"module", id:m.id, sx:p.sx, sy:p.sy, ox:m.x, oy:m.y, lx:m.x, ly:m.y,
+            base: moduleRect(m), guides:null, blocked:false,
+            kids: S.tables.filter(t => t.moduleId === m.id).map(t => ({id:t.id, x:t.x, y:t.y}))};
+  } else if (p.type === "table"){
+    const t = getTable(p.id);
+    const wasHit = !!tableHit(t);        // 旧数据本身重叠时，不能因此卡死拖不动
+    t._dragging = true; t._orig = {x:t.x, y:t.y};
+    drag = {mode:"table", id:t.id, sx:p.sx, sy:p.sy, ox:t.x, oy:t.y, fromMod:t.moduleId, wasHit, guides:null};
+    sel = {kind:"table", id:t.id};
+    render();
+  }
+}
+
+/* 模块整体位移：模块与其中所有表同步平移 */
+function moveModule(d, dx, dy){
+  const m = getModule(d.id);
+  m.x = Math.round(d.ox + dx);
+  m.y = Math.round(d.oy + dy);
+  const ax = m.x - d.ox, ay = m.y - d.oy;
+  for (const k of d.kids){
+    const t = getTable(k.id);
+    if (!t) continue;
+    t.x = k.x + ax;
+    t.y = k.y + ay;
+  }
+}
+
+stage.addEventListener("pointerup", onUp);
+/* 双击连线（或它的标签）＝ 打开关系弹窗，留住「双击改类型」的老习惯 */
+stage.addEventListener("dblclick", e => {
+  const hit = e.target.closest ? e.target.closest('[data-kind="rel"],[data-kind="rel-label"]') : null;
+  if (!hit) return;
+  const r = S.rels.find(x => x.id === hit.dataset.id);
+  if (!r) return;
+  sel = {kind:"rel", id:r.id};
+  render();
+  openRelPop(r.id);
+});
+/* 指针被系统打断（触控切窗口等）：整段回退，别把半成品留在画布上 */
+stage.addEventListener("pointercancel", () => {
+  stage.classList.remove("is-dragging");
+  stage.classList.remove("is-unlinking");
+  clearTextSelection();
+  wrap.style.cursor = "default";
+  if (drag && drag.mode === "table"){
+    const t = getTable(drag.id);
+    if (t){ delete t._dragging; delete t._orig; t.x = drag.ox; t.y = drag.oy; t.moduleId = drag.fromMod; }
+  } else if (drag && drag.mode === "module"){
+    const m = getModule(drag.id);
+    if (m){
+      m.x = drag.ox; m.y = drag.oy;
+      for (const k of drag.kids){ const t = getTable(k.id); if (t){ t.x = k.x; t.y = k.y; } }
+    }
+  }
+  drag = null; press = null; dropMod = null;
+  render();
+});
+function onUp(e){
+  stage.classList.remove("is-dragging");
+  clearTextSelection();          // 松手也没有残留选区
+  // 平移
+  if (drag && drag.mode === "pan"){
+    wrap.style.cursor = "default";
+    drag = null; saveSoon(); return;
+  }
+  // 连线
+  if (drag && drag.mode === "link"){
+    const wpt = toWorld(e.clientX, e.clientY);
+    const src = drag.from;
+    const moved = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 5;
+    drag = null;
+    if (!moved){ render(); return; }          // 只是点了一下锚点，不建线
+    const t = tableAtPoint(wpt);
+    if (!t){ render(); toast("连线要落在目标表的 PK / FK 列上", true); return; }
+    const c = pickDropCol(t, wpt, src);
+    if (!c){
+      render();
+      const anyMarked = t.cols.some(x => x.pk || x.fk);
+      toast(anyMarked ? "自引用请连到同一张表的另一个列" : `「${t.name}」还没有 PK / FK 列，无法对接`, true);
+      return;
+    }
+    addRel(src, {t:t.id, c:c.id});
+    return;
+  }
+  // 拔线：拖到别的列 = 改连，拖到空白 = 断开
+  if (drag && drag.mode === "unlink"){
+    stage.classList.remove("is-unlinking");
+    const r = S.rels.find(x => x.id === drag.id);
+    const side = drag.side, moved = drag.moved, oc = drag.overCol;
+    const wpt = toWorld(e.clientX, e.clientY);
+    const tAt = tableAtPoint(wpt);
+    drag = null;
+    if (!r){ render(); return; }
+    if (!moved){ render(); return; }                 // 只是点了一下：只选中，不弹窗、不改数据
+
+    const [ea, eb] = relEnds(r);
+    const oldEp  = side === "a" ? ea : eb;
+    const keepEp = side === "a" ? eb : ea;
+
+    if (!oc){
+      if (tAt){                                      // 落在表上却没对上列，别当成"断开"误删
+        render();
+        toast(tAt.cols.some(c => c.pk || c.fk) ? "拖到 PK / FK 列上才能改连" : `「${tAt.name}」没有 PK / FK 列`, true);
+        return;
+      }
+      const from = epName(ea), to = epName(eb);
+      S.rels = S.rels.filter(x => x.id !== r.id);
+      sel = null; render(); snap();
+      toast(`已断开 ${from} → ${to} · Ctrl+Z 可撤销`);
+      return;
+    }
+
+    if (oc.t === oldEp.t && oc.c === oldEp.c){ render(); return; }   // 原地放回，不变
+    if (pairExists(keepEp, oc, r.id)){ render(); toast("这两列之间已有连线", true); return; }
+
+    if (side === "a") r.from = {t:oc.t, c:oc.c};
+    else              r.to   = {t:oc.t, c:oc.c};
+    normalizeRelDir(r);
+    render(); snap();
+    toast(`已改连到 ${epName(oc)}`);
+    return;
+  }
+
+  // 模块拖动
+  if (drag && drag.mode === "module"){
+    const blocked = drag.blocked;
+    drag = null;
+    render();                       // 清掉对齐辅助线
+    save(); snap();
+    if (blocked) toast("模块之间不能重叠，已回退", true);
+    return;
+  }
+  // 表拖动
+  if (drag && drag.mode === "table"){
+    const t = getTable(drag.id);
+    const at = toWorld(e.clientX, e.clientY);
+    const tm = moduleAtPoint(at, DROP_TOL);
+    const prev = t.moduleId;
+    const ox = drag.ox, oy = drag.oy, wasHit = drag.wasHit;
+    delete t._dragging; delete t._orig;
+
+    const backOff = msg => {
+      t.moduleId = prev; t.x = ox; t.y = oy;
+      drag = null; dropMod = null; render(); snap();
+      toast(msg, true);
+    };
+
+    if (!tm) return backOff("表只能放在模块内，已回退");
+
+    t.moduleId = tm.id;
+    if (drag.snap){ t.x = drag.snap.x; t.y = drag.snap.y; }
+    t.x = Math.round(t.x); t.y = Math.round(t.y);
+    normalizeTable(t);
+
+    // 表与表不能重叠，模块也不能被撑到撞上邻居 —— 不合法就就近吸附
+    let hitT = tableHit(t);
+    let hitM = moduleCollides(tm);
+    if ((hitT || hitM) && !wasHit){
+      if (!tableSpotFor(t, at, true, tm.id)){
+        return backOff(hitT ? `会让「${t.name}」与「${hitT.name}」重叠，已回退`
+                            : `会让「${tm.name}」与「${hitM.name}」重叠，已回退`);
+      }
+      hitT = tableHit(t);
+      hitM = moduleCollides(tm);
+      if (hitT || hitM) return backOff("找不到能放下这张表的空位，已回退");
+    }
+
+    drag = null; dropMod = null;
+    render(); snap();
+    if (tm.id !== prev) toast(`已移入模块「${tm.name}」`);
+    return;
+  }
+  // 点击
+  if (press && !press.moved){
+    handleClick();
+  }
+  press = null;
+}
+
+function handleClick(){
+  const p = press;
+  if (p.kind === "title"){
+    sel = {kind:"table", id:p.id}; render();
+    renameTable(p.id);
+  } else if (p.kind === "mlabel"){
+    sel = {kind:"module", id:p.id}; render();
+    renameModule(p.id);
+  } else if (p.kind === "col"){
+    sel = {kind:"table", id:p.id}; render();
+    openColPop(p.id, p.col);
+  } else if (p.kind === "table"){
+    sel = {kind:"table", id:p.id}; render();
+  } else if (p.kind === "module"){
+    sel = {kind:"module", id:p.id}; render();
+  }
+  press = null;
+}
+
+/* 点/矩形命中 */
+function tableAtPoint(pt){
+  for (let i = S.tables.length - 1; i >= 0; i--){
+    const t = S.tables[i], L = tableLayout(t);
+    if (pt.x >= t.x && pt.x <= t.x + L.w && pt.y >= t.y && pt.y <= t.y + L.h) return t;
+  }
+  return null;
+}
+/* 光标压在哪一行（表头 / 表尾返回 null） */
+function colAtPoint(t, pt){
+  const L = tableLayout(t);
+  const dy = pt.y - t.y - HEAD_H;
+  if (dy < 0 || dy >= L.bodyH) return null;
+  let acc = 0;
+  for (let i = 0; i < t.cols.length; i++){
+    const rh = L.rowH[i];
+    if (dy >= acc && dy < acc + rh) return t.cols[i];
+    acc += rh;
+  }
+  return null;
+}
+/* 落点吸附：优先光标所在行，否则取最近且合法的 PK/FK 列 */
+function pickDropCol(t, pt, src){
+  const ok = c => (c.pk || c.fk) && !(src && src.t === t.id && src.c === c.id);
+  const direct = colAtPoint(t, pt);
+  if (direct && ok(direct)) return direct;
+  const list = t.cols.filter(ok);
+  if (!list.length) return null;
+  const score = c => (c.fk ? 0 : 2) + (c.pk ? 0 : 1) * 0.5;
+  list.sort((a, b) =>
+    (score(a) - score(b)) ||
+    (Math.abs(rowYOf(t, a) - pt.y) - Math.abs(rowYOf(t, b) - pt.y)));
+  return list[0];
+}
+/* 命中模块：矩形内直接命中；tol 存在时，落在边界外 tol 以内的也算
+   （用于「把表拖到模块左边/上面，让模块朝那个方向长」） */
+function moduleAtPoint(pt, tol){
+  let near = null, nd = Infinity;
+  for (let i = S.modules.length - 1; i >= 0; i--){
+    const m = S.modules[i], r = moduleRect(m);
+    if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) return m;
+    if (!tol) continue;
+    const dx = Math.max(r.x - pt.x, 0, pt.x - (r.x + r.w));
+    const dy = Math.max(r.y - pt.y, 0, pt.y - (r.y + r.h));
+    const d = Math.hypot(dx, dy);
+    if (d < nd){ nd = d; near = m; }
+  }
+  return (tol && nd <= tol) ? near : null;
+}
+
+/* 试算「表落进这个模块之后」的模块矩形，用于拖放时的生长预览 */
+function expectModuleRect(t, tm){
+  const keep = t.moduleId;
+  t.moduleId = tm.id;
+  const r = moduleRect(tm, true);
+  t.moduleId = keep;
+  return r;
+}
+const sameRect = (a, b) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+/* 滚轮缩放 */
+wrap.addEventListener("wheel", e => {
+  e.preventDefault();
+  const loc = toLocal(e.clientX, e.clientY);
+  if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > 8){
+    zoomAt(Math.exp(-e.deltaY * 0.0016), loc.x, loc.y);
+  }
+}, {passive:false});
+
+/* 键盘 */
+window.addEventListener("keydown", e => {
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea") {
+    if (e.key === "Escape"){ e.target.blur(); closePops(); }
+    return;
+  }
+  if ((e.key === "Delete" || e.key === "Backspace") && sel){
+    e.preventDefault();
+    if (sel.kind === "table") delTable(sel.id);
+    else if (sel.kind === "module") delModule(sel.id);
+    else if (sel.kind === "rel"){
+      S.rels = S.rels.filter(r => r.id !== sel.id); sel = null; render(); snap();
+    }
+  }
+  if (e.key === "Escape"){
+    if (ddlModal.classList.contains("on")){ closeDdlImport(); return; }
+    closePops(); sel = null; render();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "0"){ e.preventDefault(); fit(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "o" || e.key === "O")){
+    e.preventDefault();
+    document.getElementById("fileSvg").click();
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")){
+    e.preventDefault();
+    stepHist(e.shiftKey ? 1 : -1);
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")){
+    e.preventDefault(); stepHist(1);
+  }
+});
+
+/* =========================================================
+   10. 重命名（内联输入）
+   ========================================================= */
+function beginInline(rect, opts){
+  const inp = document.createElement("input");
+  inp.className = "inline-edit";
+  inp.value = opts.value;
+  Object.assign(inp.style, {
+    left: rect.x + "px", top: rect.y + "px", width: rect.w + "px", height: rect.h + "px",
+    fontSize: opts.fontSize + "px", fontWeight: opts.fontWeight || 400,
+    fontFamily: opts.mono ? MONO : SANS, letterSpacing: opts.letterSpacing || "0",
+    textAlign: opts.align || "center", padding: opts.padding || "0"
+  });
+  layer.appendChild(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const commit = ok => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    inp.remove();
+    if (ok && v) opts.onCommit(v);
+    render(); if (ok && v) snap();
+  };
+  inp.addEventListener("blur", () => commit(true));
+  inp.addEventListener("keydown", ev => {
+    if (ev.key === "Enter"){ ev.preventDefault(); commit(true); }
+    if (ev.key === "Escape"){ ev.preventDefault(); commit(false); }
+  });
+}
+
+function renameTable(id){
+  const t = getTable(id); if (!t) return;
+  const L = tableLayout(t);
+  beginInline(
+    {x:t.x*view.k + view.x + 26*view.k, y:(t.y + 5)*view.k + view.y,
+     w:(L.w - 52)*view.k, h:(HEAD_H - 8)*view.k},
+    {value:t.name, fontSize:13*view.k, fontWeight:600,
+     onCommit:v => {
+       t.name = v;
+       const m = getModule(t.moduleId);
+       const hit = m && moduleCollides(m);
+       if (hit) toast(`模块「${m.name}」变宽后与「${hit.name}」有重叠`, true);
+     }}
+  );
+}
+function renameModule(id){
+  const m = getModule(id); if (!m) return;
+  const r = moduleRect(m);
+  const pg = pillGeom(m);
+  beginInline(
+    {x:(r.x + 13)*view.k + view.x, y:(r.y - 11)*view.k + view.y,
+     w:pg.w*view.k, h:22*view.k},
+    {value:m.name, fontSize:10*view.k, fontWeight:800, letterSpacing:"0.09em",
+     align:"left", padding:"0 " + (11*view.k) + "px",
+     onCommit:v => { m.name = v; }}
+  );
+}
+
+/* =========================================================
+   11. 浮层：列编辑器 / 关系 / 调色
+   ========================================================= */
+const colPop = document.getElementById("colPop");
+const relPop = document.getElementById("relPop");
+
+/* SQL 常用类型，按用途分组；MySQL / PostgreSQL 通用写法优先 */
+const SQL_TYPES = [
+  ["整数", ["bigint", "int", "smallint", "tinyint", "mediumint", "serial", "bigserial"]],
+  ["小数", ["decimal(10,2)", "decimal(12,4)", "numeric(12,2)", "float", "double precision", "real", "money"]],
+  ["字符", ["varchar(32)", "varchar(64)", "varchar(128)", "varchar(255)", "varchar(512)",
+            "char(2)", "char(3)", "char(36)",
+            "text", "tinytext", "mediumtext", "longtext", "citext"]],
+  ["时间", ["date", "time", "datetime", "timestamp", "timestamptz", "timetz", "interval", "year"]],
+  ["布尔 / 位", ["boolean", "bool", "bit(1)"]],
+  ["二进制", ["bytea", "blob", "varbinary(255)"]],
+  ["JSON / XML", ["json", "jsonb", "xml"]],
+  ["其他", ["uuid", "enum('a', 'b')", "inet", "cidr", "macaddr", "point", "geometry"]]
+];
+
+/* 类型下拉：原生 datalist 没有箭头、单击也不展开，这里自己做一套 */
+let tsDocHandler = null;
+
+function initTypePicker(input, panel, arrow){
+  const wrap = input.parentElement;
+  let opts = [], idx = -1, open = false;
+
+  const isTyping = () => document.activeElement === input && input.dataset.tsTyped === "1";
+
+  function paint(filter){
+    const q = String(filter || "").trim().toLowerCase();
+    let html = "", n = 0;
+    for (const [grp, list] of SQL_TYPES){
+      const hit = q ? list.filter(v => v.toLowerCase().includes(q)) : list;
+      if (!hit.length) continue;
+      html += `<div class="ts-grp">${grp}</div>`;
+      for (const v of hit){ html += `<div class="ts-opt" data-v="${esc(v)}" title="${esc(v)}">${esc(v)}</div>`; n++; }
+    }
+    panel.innerHTML = n ? html : `<div class="ts-empty">没有匹配的类型<br>可直接输入任意写法</div>`;
+    opts = Array.prototype.slice.call(panel.querySelectorAll(".ts-opt"));
+    idx = -1;
+    return n;
+  }
+
+  function markCurrent(){
+    const cur = opts.find(o => o.dataset.v === input.value);
+    if (!cur) return;
+    cur.classList.add("on");
+    cur.scrollIntoView({block:"nearest"});
+  }
+
+  function showPanel(){
+    // 下方空间不够就朝上展开，别被视口切掉
+    const r = input.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    panel.classList.toggle("up", below < 240 && r.top > below);
+    panel.classList.add("on");
+    wrap.classList.add("open");
+    open = true;
+  }
+
+  function openPanel(filter){
+    paint(filter);
+    showPanel();
+    if (filter == null) markCurrent();
+  }
+
+  function closePanel(){
+    panel.classList.remove("on");
+    wrap.classList.remove("open");
+    open = false; idx = -1;
+  }
+
+  function pick(v){
+    input.value = v;
+    input.dataset.tsTyped = "0";
+    input.dispatchEvent(new Event("input"));
+    input.dispatchEvent(new Event("change"));
+    closePanel();                    // 放在 input 之后，否则会被 input 监听重新摊开
+    input.blur();
+  }
+
+  input.dataset.tsTyped = "0";
+  input.setAttribute("autocomplete", "off");
+
+  // 聚焦时列出全部（不过滤当前值，否则只剩它自己一条）；
+  // 已聚焦状态下再点一次输入框也要能摊开，所以补一个 pointerdown
+  input.addEventListener("focus", () => { if (!open) openPanel(null); });
+  input.addEventListener("pointerdown", () => { if (!open) openPanel(null); });
+  input.addEventListener("input", () => {
+    input.dataset.tsTyped = "1";
+    const n = paint(input.value);
+    // 边打边筛：筛不出东西就收起来，别拿空面板挡住画布
+    if (!n){ if (open) closePanel(); return; }
+    if (!open) showPanel();
+  });
+  input.addEventListener("blur", () => { input.dataset.tsTyped = "0"; });
+
+  arrow.addEventListener("pointerdown", e => {
+    e.preventDefault(); e.stopPropagation();
+    if (open){ closePanel(); return; }
+    input.focus();
+    openPanel(null);
+  });
+
+  // 用 pointerdown 选，preventDefault 保住焦点，避免 blur 抢先关掉面板
+  panel.addEventListener("pointerdown", e => {
+    const o = e.target.closest ? e.target.closest(".ts-opt") : null;
+    if (!o) return;
+    e.preventDefault(); e.stopPropagation();
+    pick(o.dataset.v);
+  });
+
+  input.addEventListener("keydown", e => {
+    if (e.key === "Escape"){
+      if (open){ e.stopPropagation(); e.preventDefault(); closePanel(); }
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if (!open){ openPanel(isTyping() ? input.value : null); }
+      if (!opts.length) return;
+      idx = (idx + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+      opts.forEach(o => o.classList.remove("on"));
+      opts[idx].classList.add("on");
+      opts[idx].scrollIntoView({block:"nearest"});
+      return;
+    }
+    if (e.key === "Enter" && open && idx >= 0){
+      e.preventDefault();
+      pick(opts[idx].dataset.v);
+    }
+  });
+
+  if (tsDocHandler) document.removeEventListener("pointerdown", tsDocHandler, true);
+  tsDocHandler = e => {
+    if (!open) return;
+    if (panel.contains(e.target) || arrow.contains(e.target) || e.target === input) return;
+    closePanel();
+  };
+  document.addEventListener("pointerdown", tsDocHandler, true);
+}
+
+function closePops(){
+  colPop.style.display = "none";
+  relPop.style.display = "none";
+  popTarget = null;
+  document.querySelectorAll(".pop-color").forEach(n => n.remove());
+}
+
+function openColPop(tableId, colId, justAdded){
+  const t = getTable(tableId); if (!t) return;
+  const c = t.cols.find(x => x.id === colId); if (!c) return;
+  popTarget = {kind:"col", tableId, colId};
+  relPop.style.display = "none";
+  colPop.style.display = "block";
+  colPop.innerHTML = `
+    <div class="pop-hd"><span>列属性 · COLUMN</span><button class="pop-x" data-act="close">×</button></div>
+    <label class="fld"><i>列名</i><input class="c-name" value="${esc(c.name)}" spellcheck="false"></label>
+    <label class="fld"><i>类型</i>
+      <div class="ts-w">
+        <input class="c-type mono" value="${esc(c.type)}" spellcheck="false" autocomplete="off">
+        <button class="ts-arw" type="button" tabindex="-1" aria-label="选择类型">▼</button>
+        <div class="ts-panel"></div>
+      </div>
+    </label>
+    <label class="fld"><i>中文名 / 注释</i><input class="c-comment" value="${esc(c.comment || "")}" placeholder="如 客户编号" spellcheck="false"></label>
+    <div class="chips">
+      <button class="chip" data-t="pk" data-on="${c.pk?1:0}">PK 主键</button>
+      <button class="chip" data-t="fk" data-on="${c.fk?1:0}">FK 外键</button>
+      <button class="chip" data-t="uk" data-on="${c.uk?1:0}">UK 唯一</button>
+    </div>
+    <div class="chips">
+      <button class="chip" data-t="nn" data-on="${c.nn?1:0}">非空 NOT NULL</button>
+    </div>
+    <label class="fld"><i>默认值</i><input class="c-def mono" value="${esc(c.def || "")}" placeholder="如 0 / now()" spellcheck="false"></label>
+    <button class="pop-del" data-act="delcol">删除此列</button>
+    <div class="pop-note">表头右上角的 ⓘ 可展开明细，在图上显示中文名 / 非空 / 默认值</div>`;
+  positionPopover();
+  const nameInput = colPop.querySelector(".c-name");
+  nameInput.focus();
+  if (justAdded) nameInput.select();
+
+  nameInput.addEventListener("input", () => { c.name = nameInput.value; render(); });
+  nameInput.addEventListener("change", snap);
+  const typeInput = colPop.querySelector(".c-type");
+  typeInput.addEventListener("input", () => { c.type = typeInput.value; render(); });
+  typeInput.addEventListener("change", snap);
+  initTypePicker(typeInput, colPop.querySelector(".ts-panel"), colPop.querySelector(".ts-arw"));
+  const comInput = colPop.querySelector(".c-comment");
+  comInput.addEventListener("input", () => { c.comment = comInput.value; render(); });
+  comInput.addEventListener("change", snap);
+  const defInput = colPop.querySelector(".c-def");
+  defInput.addEventListener("input", () => { c.def = defInput.value; render(); });
+  defInput.addEventListener("change", snap);
+
+  colPop.querySelectorAll(".chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const k = btn.dataset.t;
+      c[k] = !c[k];
+      btn.dataset.on = c[k] ? "1" : "0";
+      render(); snap();
+    });
+  });
+  colPop.querySelector('[data-act="close"]').addEventListener("click", closePops);
+  colPop.querySelector('[data-act="delcol"]').addEventListener("click", () => {
+    const hitRels = S.rels.filter(r => relEnds(r).some(e => e.c === c.id));
+    S.rels = S.rels.filter(r => !relEnds(r).some(e => e.c === c.id));
+    t.cols = t.cols.filter(x => x.id !== c.id);
+    closePops(); render(); snap();
+    if (hitRels.length) toast(`已同时移除 ${hitRels.length} 条连到该列的关联`);
+  });
+}
+
+function positionPopover(){
+  if (!popTarget) return;
+  if (popTarget.kind === "col"){
+    const t = getTable(popTarget.tableId); if (!t){ closePops(); return; }
+    const L = tableLayout(t);
+    const idx = t.cols.findIndex(c => c.id === popTarget.colId);
+    const rowY = t.y + HEAD_H + (idx >= 0 ? L.rowTop[idx] : 0);
+    let sx = (t.x + L.w) * view.k + view.x + 14;
+    let sy = rowY * view.k + view.y - 30;
+    const pw = colPop.offsetWidth || 236, ph = colPop.offsetHeight || 200;
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (sx + pw > W - 12) sx = t.x * view.k + view.x - pw - 14;
+    if (sx < 8) sx = 8;
+    sy = clamp(sy, 8, H - ph - 8);
+    colPop.style.left = sx + "px";
+    colPop.style.top = sy + "px";
+  }
+  if (popTarget.kind === "rel"){
+    const r = S.rels.find(x => x.id === popTarget.id); if (!r){ closePops(); return; }
+    const g = relGeom(r); if (!g){ closePops(); return; }
+    const pw = relPop.offsetWidth || 236, ph = relPop.offsetHeight || 180;
+    let sx = g.mid.x * view.k + view.x + 16;
+    let sy = g.mid.y * view.k + view.y - ph/2;
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (sx + pw > W - 12) sx = g.mid.x * view.k + view.x - pw - 16;
+    sy = clamp(sy, 8, H - ph - 8);
+    relPop.style.left = Math.max(8, sx) + "px";
+    relPop.style.top = sy + "px";
+  }
+}
+
+function openRelPop(id){
+  const r = S.rels.find(x => x.id === id); if (!r) return;
+  popTarget = {kind:"rel", id};
+  colPop.style.display = "none";
+  relPop.style.display = "block";
+  const [ea, eb] = relEnds(r);
+  const epLabel = e => {
+    const t = getTable(e.t);
+    const c = e.c ? colOf(e.t, e.c) : null;
+    return t ? (t.name + (c ? "." + c.name : " · 整表")) : "—";
+  };
+  const t1 = (r.type === "1:1" || r.type === "1:N") ? "一" : "多";
+  const t2 = r.type === "1:1" ? "一" : "多";
+  const epRow = (e, side, tag, col) => `
+    <div class="ep-row">
+      <span class="ep-tag" style="background:${col.bg};color:${col.fg}">${tag}</span>
+      <span class="ep-txt" title="${esc(epLabel(e))}">${esc(epLabel(e))}</span>
+      ${e.c ? `<button class="ep-x" data-act="detach" data-side="${side}" title="不删关系，只取消列级关联，退回整表连线">退到整表</button>` : ""}
+    </div>`;
+  relPop.innerHTML = `
+    <div class="pop-hd"><span>关系 · RELATION</span><button class="pop-x" data-act="close">×</button></div>
+    <div class="ep-box">
+      ${epRow(ea, "a", t1, {bg:"#ede9fe", fg:"#6d4bd8"})}
+      ${epRow(eb, "b", t2, {bg:"#fef1e2", fg:"#c2761a"})}
+    </div>
+    <div class="seg">
+      <button data-rt="1:1" data-on="${r.type==="1:1"?1:0}">1 : 1</button>
+      <button data-rt="1:N" data-on="${r.type==="1:N"?1:0}">1 : N</button>
+      <button data-rt="N:N" data-on="${r.type==="N:N"?1:0}">N : N</button>
+    </div>
+    <label class="fld"><i>连接标签（可选）</i><input class="r-label" value="${esc(r.label||"")}" placeholder="如 placed by" spellcheck="false"></label>
+    <button class="pop-del" data-act="delrel">删除关系</button>`;
+  positionPopover();
+  relPop.querySelectorAll("[data-rt]").forEach(b => {
+    b.addEventListener("click", () => {
+      r.type = b.dataset.rt;
+      relPop.querySelectorAll("[data-rt]").forEach(x => x.dataset.on = x === b ? "1" : "0");
+      render(); snap();
+    });
+  });
+  relPop.querySelectorAll('[data-act="detach"]').forEach(b => {
+    b.addEventListener("click", () => {
+      const [x, y] = relEnds(r);
+      const e = b.dataset.side === "a" ? x : y;
+      if (b.dataset.side === "a") r.from = {t:e.t, c:null};
+      else r.to = {t:e.t, c:null};
+      openRelPop(r.id); render(); snap();
+    });
+  });
+  const li = relPop.querySelector(".r-label");
+  li.addEventListener("input", () => { r.label = li.value; render(); });
+  li.addEventListener("change", snap);
+  relPop.querySelector('[data-act="close"]').addEventListener("click", closePops);
+  relPop.querySelector('[data-act="delrel"]').addEventListener("click", () => {
+    S.rels = S.rels.filter(x => x.id !== r.id);
+    sel = null; closePops(); render(); snap();
+  });
+}
+
+function openColorMenu(moduleId){
+  const m = getModule(moduleId); if (!m) return;
+  closePops();
+  const r = moduleRect(m);
+  const menu = document.createElement("div");
+  menu.className = "pop pop-color";
+  menu.style.cssText = "position:absolute;display:block;width:auto;padding:8px;z-index:55";
+  menu.innerHTML = PALETTES.map((p, i) =>
+    `<span data-ci="${i}" style="display:inline-block;width:20px;height:20px;border-radius:6px;margin:3px;cursor:pointer;
+      background:${p.accent};box-shadow:0 0 0 ${i===(m.colorIdx||0)%PALETTES.length?2:0}px #fff,0 0 0 ${i===(m.colorIdx||0)%PALETTES.length?3.5:0}px ${p.accent}"></span>`
+  ).join("");
+  layer.appendChild(menu);
+  menu.style.left = Math.max(8, (r.x + 13) * view.k + view.x) + "px";
+  menu.style.top = Math.max(8, (r.y - 16) * view.k + view.y) + "px";
+  menu.addEventListener("click", ev => {
+    const s = ev.target.closest("[data-ci]");
+    if (!s) return;
+    m.colorIdx = +s.dataset.ci;
+    menu.remove(); render(); snap();
+  });
+}
+
+/* =========================================================
+   12. 组件库拖拽
+   ========================================================= */
+let ghost = null;
+
+/* 拖出元件时的几何：世界尺寸 + 指针落在元件内的位置，
+   偏移量必须和 createModuleAt / createTableAt 的落点算法一致，松手才不会平移。 */
+function ghostGeom(kind){
+  return kind === "module"
+    ? {w:M_MIN_W,   h:M_MIN_H,   ox:150, oy:100}
+    : {w:NEW_TBL_W, h:NEW_TBL_H, ox:80,  oy:30};
+}
+
+/* 预览按当前画布缩放渲染：外层盒占「世界尺寸 × view.k」，内层整体 scale(k)。
+   这样预览的大小就是落地后的真实大小，不会出现「拖的时候很大、松手突然缩小」。 */
+function ghostMarkup(kind, k){
+  const g = ghostGeom(kind);
+  const body = kind === "module"
+    ? `<div style="position:relative;width:${g.w}px;height:${g.h}px;box-sizing:border-box;
+                   border:1.4px dashed #cec1fa;background:#f8f5ff;border-radius:14px">
+         <span style="position:absolute;left:13px;top:-11px;height:22px;line-height:20px;padding:0 12px;
+                      font-size:10px;font-weight:800;letter-spacing:.08em;background:#fff;
+                      border:1px solid #cec1fa;color:#6d4bd8;border-radius:11px">MODULE</span>
+       </div>`
+    : `<div style="width:${g.w}px;height:${g.h}px;box-sizing:border-box;display:flex;flex-direction:column;
+                   border:1px solid #e3e7ee;background:#fff;border-radius:9px;overflow:hidden">
+         <div style="flex:none;height:${HEAD_H}px;box-sizing:border-box;background:#f4f0ff;border-top:2.4px solid #8b5cf6"></div>
+         <div style="flex:none;height:${ROW_H}px;box-sizing:border-box;border-bottom:1px solid #f2f4f8"></div>
+         <div style="flex:none;height:${ROW_H}px;box-sizing:border-box;border-bottom:1px solid #f2f4f8"></div>
+         <div style="flex:1"></div>
+       </div>`;
+  return `<div style="width:${g.w}px;height:${g.h}px;transform:scale(${k});transform-origin:0 0">${body}</div>`;
+}
+
+document.querySelectorAll("[data-pal]").forEach(item => {
+  item.addEventListener("pointerdown", ev => {
+    ev.preventDefault();
+    const kind = item.dataset.pal;
+    let moved = false;
+    const startX = ev.clientX, startY = ev.clientY;
+    const g = ghostGeom(kind);
+    let gk = view.k || 1;
+
+    ghost = document.createElement("div");
+    ghost.className = "ghost";
+    ghost.style.width  = (g.w * gk) + "px";
+    ghost.style.height = (g.h * gk) + "px";
+    ghost.style.left = (ev.clientX - g.ox * gk) + "px";
+    ghost.style.top  = (ev.clientY - g.oy * gk) + "px";
+    ghost.innerHTML = ghostMarkup(kind, gk);
+    document.body.appendChild(ghost);
+
+    // 拖动中若用滚轮改了缩放，预览也要跟着换比例
+    const syncScale = () => {
+      const k = view.k || 1;
+      if (Math.abs(k - gk) < 0.001) return;
+      gk = k;
+      ghost.style.width  = (g.w * gk) + "px";
+      ghost.style.height = (g.h * gk) + "px";
+      const inner = ghost.firstElementChild;
+      if (inner) inner.style.transform = `scale(${gk})`;
+    };
+
+    const move = e2 => {
+      if (Math.hypot(e2.clientX - startX, e2.clientY - startY) > 3) moved = true;
+      syncScale();
+      ghost.style.left = (e2.clientX - g.ox * gk) + "px";
+      ghost.style.top  = (e2.clientY - g.oy * gk) + "px";
+      const inside = inCanvas(e2.clientX, e2.clientY);
+      if (kind === "table" && inside){
+        const pt = toWorld(e2.clientX, e2.clientY);
+        const m = moduleAtPoint(pt, DROP_TOL);
+        const nid = m ? m.id : null;
+        if (nid !== dropMod){ dropMod = nid; render(); }
+      }
+    };
+    const up = e2 => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (ghost){ ghost.remove(); ghost = null; }
+      const hadDrop = dropMod; dropMod = null;
+      const inside = inCanvas(e2.clientX, e2.clientY);
+
+      if (!moved || !inside){
+        // 视为点击：落在画布中心
+        placeAtCenter(kind);
+        if (hadDrop) render();
+        return;
+      }
+      const pt = toWorld(e2.clientX, e2.clientY);
+      if (kind === "module") createModuleAt(pt);
+      else createTableAt(pt);
+      render();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+});
+
+function inCanvas(cx, cy){
+  const r = wrap.getBoundingClientRect();
+  return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+}
+
+/* 当前视口覆盖的世界坐标范围 */
+function viewBoundsWorld(){
+  const W = wrap.clientWidth || 1000, H = wrap.clientHeight || 700;
+  const k = view.k || 1;
+  return {x:-view.x/k, y:-view.y/k, w:W/k, h:H/k};
+}
+
+/* 只平移视图，让某个矩形完整出现在可视区（不改世界坐标） */
+function revealRect(r){
+  const W = wrap.clientWidth || 1000, H = wrap.clientHeight || 700, pad = 26;
+  const left = r.x*view.k + view.x, top = r.y*view.k + view.y;
+  const right = left + r.w*view.k, bottom = top + r.h*view.k;
+  let dx = 0, dy = 0;
+  if (right > W - pad) dx = (W - pad) - right;
+  if (left + dx < pad) dx = pad - left;
+  if (bottom > H - pad) dy = (H - pad) - bottom;
+  if (top + dy < pad) dy = pad - top;
+  // 比视区还大时优先露出左上角，但不去改缩放（避免打断用户当前的视图）
+  if (r.w*view.k > W - pad*2) dx = pad - left;
+  if (r.h*view.k > H - pad*2) dy = pad - top;
+  view.x += dx; view.y += dy;
+}
+function revealModule(m){ revealRect(moduleRect(m)); }
+
+/* 就近找空位：以落点为心向外逐环扫描整个画布（不限于可视区），
+   命中即取距离最近的一个。画布是无限的，所以这里永远不该「无解」。 */
+function seekFreeSpot(m, maxRings, reserveH){
+  const bx = Math.round(m.x), by = Math.round(m.y);
+  const r = moduleRect(m);
+  let best = null, bestD = Infinity;
+  const test = (x, y) => {
+    m.x = Math.round(x); m.y = Math.round(y);
+    const d = Math.abs(m.x - bx) + Math.abs(m.y - by);
+    if (d < bestD && !moduleCollides(m, reserveH)){ bestD = d; best = {x:m.x, y:m.y}; }
+  };
+
+  test(bx, by);
+  const stepX = Math.max(48, Math.round(r.w * 0.55));
+  const stepY = Math.max(44, Math.round(r.h * 0.55));
+  for (let ring = 1; ring <= (maxRings || 14) && !best; ring++){
+    for (let i = -ring; i <= ring; i++){
+      test(bx + i*stepX, by - ring*stepY);
+      test(bx + i*stepX, by + ring*stepY);
+      test(bx - ring*stepX, by + i*stepY);
+      test(bx + ring*stepX, by + i*stepY);
+    }
+  }
+  if (best){ m.x = best.x; m.y = best.y; return true; }
+  m.x = bx; m.y = by;
+  return false;
+}
+
+function placeAtCenter(kind){
+  const pt = {x:(wrap.clientWidth/2 - view.x)/view.k, y:(wrap.clientHeight/2 - view.y)/view.k};
+  if (kind === "module") createModuleAt({x:pt.x - 150, y:pt.y - 100}, true);
+  else createTableAt(pt, true, true);
+  render();
+}
+
+function createModuleAt(pt, quiet){
+  const wx = Math.round(pt.x - 150), wy = Math.round(pt.y - 100);
+  const RESERVE = 150;                       // 下沿预留，保证新建模块放得进一张普通表
+  const m = addModule({x:wx, y:wy});
+  const needAvoid = !!moduleCollides(m);     // 真实占用（不含预留）才提示，避免误报
+  if (!seekFreeSpot(m, 14, RESERVE)){
+    S.modules = S.modules.filter(x => x.id !== m.id);
+    toast("周边都被占满了，找不到空位放下新模块", true);
+    render();
+    return null;
+  }
+  const moved = Math.abs(m.x - wx) > 2 || Math.abs(m.y - wy) > 2;
+  revealModule(m);                       // 保证新模块一定出现在视野里
+  if (!quiet && needAvoid && moved) toast("目标位置已被模块占用，已就近避让");
+  sel = {kind:"module", id:m.id};
+  render(); snap();
+  return m;
+}
+
+function nearestModule(pt){
+  let best = null, bd = Infinity;
+  for (const m of S.modules){
+    const r = moduleRect(m);
+    const d = Math.hypot(r.x + r.w/2 - pt.x, r.y + r.h/2 - pt.y);
+    if (d < bd){ bd = d; best = m; }
+  }
+  return best;
+}
+
+/* 给表找最近的空位：不仅要不压住别的表，还不能把所属模块撑到撞上别的模块。
+   apply=false 时只试不改坐标（拖动过程中画落点预览用）。
+   候选覆盖四个方向 —— 不然下方塞满时明明左右有地方也说「放不下」。 */
+function tableSpotFor(t, pt, apply, modId){
+  const base = {x:t.x, y:t.y, mod:t.moduleId};
+  const L = tableLayout(t);
+  const cands = [{x:base.x, y:base.y}];
+
+  // 以落点为心逐圈扩散，四正方向 + 四斜方向，越近越优先
+  const STEP = 16, RINGS = 16;
+  for (let r = 1; r <= RINGS; r++){
+    const d = r * STEP;
+    cands.push({x:base.x, y:base.y - d});
+    cands.push({x:base.x - d, y:base.y});
+    cands.push({x:base.x, y:base.y + d});
+    cands.push({x:base.x + d, y:base.y});
+    cands.push({x:base.x - d, y:base.y - d});
+    cands.push({x:base.x + d, y:base.y - d});
+    cands.push({x:base.x - d, y:base.y + d});
+    cands.push({x:base.x + d, y:base.y + d});
+  }
+
+  // 贴着别的表放：上下左右都能贴
+  for (const o of S.tables){
+    if (o.id === t.id) continue;
+    const Lo = tableLayout(o);
+    cands.push({x:o.x, y:o.y - L.h - 14});
+    cands.push({x:o.x, y:o.y + Lo.h + 14});
+    cands.push({x:o.x - L.w - 14, y:o.y});
+    cands.push({x:o.x + Lo.w + 14, y:o.y});
+    cands.push({x:o.x + Lo.w + 14, y:o.y + Lo.h + 14});
+    cands.push({x:o.x - L.w - 14, y:o.y + Lo.h + 14});
+  }
+
+  const mid = modId || t.moduleId;
+  const m = getModule(mid);
+  // 先把模块当前矩形算出来，再把表挂过去，否则表的旧坐标会污染这个矩形
+  const mRect = m ? moduleRect(m, true) : null;
+  t.moduleId = mid;
+  if (mRect){
+    cands.push({x:mRect.x + M_PAD, y:mRect.y + mRect.h + 16});   // 整体下方
+    cands.push({x:mRect.x + mRect.w + 16, y:mRect.y + M_PAD});   // 整体右侧
+    cands.push({x:mRect.x + M_PAD, y:mRect.y - L.h - 16});       // 整体上方
+    cands.push({x:mRect.x - L.w - 16, y:mRect.y + M_PAD});       // 整体左侧
+  }
+  const vb = viewBoundsWorld();
+  const inView = c => c.x >= vb.x + 8 && c.y >= vb.y + 8 &&
+                      c.x + L.w <= vb.x + vb.w - 8 && c.y + L.h <= vb.y + vb.h - 8;
+  const d = c => Math.abs(c.x - pt.x) + Math.abs(c.y - pt.y);
+  // 视区内的位置优先，其次才比距离 —— 避免表被推到看不见的地方
+  cands.sort((a, b) => (inView(b) ? 0 : 1) - (inView(a) ? 0 : 1) || d(a) - d(b));
+  for (const c of cands){
+    t.x = Math.round(c.x); t.y = Math.round(c.y);
+    if (tableHit(t)) continue;
+    const mm = getModule(t.moduleId);
+    if (mm && moduleCollides(mm, 0, true)) continue;  // 撑大后顶到别的模块 → 换个位置
+    const spot = {x:t.x, y:t.y};
+    if (!apply){ t.x = base.x; t.y = base.y; t.moduleId = base.mod; }
+    return spot;
+  }
+  t.x = base.x; t.y = base.y; t.moduleId = base.mod;  // 全部落空：还原，别把表丢在试错位置上
+  return null;
+}
+function seekTableSpot(t, pt){
+  return !!tableSpotFor(t, pt, true);
+}
+
+/* 新表默认 2 列的尺寸（落点对齐用，建表后再按真实 layout 校正一次） */
+const NEW_TBL_W = TBL_MIN_W, NEW_TBL_H = HEAD_H + 2 * ROW_H + FOOT_H;
+
+function createTableAt(pt, quiet, allowNearest){
+  const strict = moduleAtPoint(pt, DROP_TOL);
+  const m = strict || (allowNearest ? nearestModule(pt) : null);
+  if (!m){
+    toast("表只能放在模块内 —— 请先拖入一个模块", true);
+    return;
+  }
+  // 落点在外侧：表整体摆到模块外侧，且不越过光标 —— 既不会横穿压住模块里的表，
+  // 又能让模块真的朝那个方向长开。
+  let tx = pt.x - 80, ty = pt.y - 30;
+  const emptyMod = !S.tables.some(x => x.moduleId === m.id);
+  if (emptyMod){
+    // 空模块：第一张表从左上内边距开始，框只缩小、不跳位
+    const r = moduleRect(m);
+    tx = r.x + M_PAD; ty = r.y + M_PAD;
+  } else if (strict){
+    const r = moduleRect(m);
+    if (pt.x < r.x)            tx = Math.min(tx, r.x - NEW_TBL_W - 16);
+    else if (pt.x > r.x + r.w) tx = Math.max(tx, r.x + r.w + 16);
+    if (pt.y < r.y)            ty = Math.min(ty, r.y - NEW_TBL_H - 16);
+    else if (pt.y > r.y + r.h) ty = Math.max(ty, r.y + r.h + 16);
+  } else {
+    const r = moduleRect(m);                     // 没有明确落点：贴着模块右下角
+    tx = r.x + M_PAD; ty = r.y + r.h + 16;
+  }
+  const t = addTable(m.id, {x:tx, y:ty});
+  normalizeTable(t);
+  let avoided = false;
+  if (tableHit(t) || moduleCollides(m)){
+    if (!seekTableSpot(t, pt)){
+      S.tables = S.tables.filter(x => x.id !== t.id);
+      render();
+      toast("放不下 —— 模块四周都被占满了，请先腾出空间或换个模块", true);
+      return;
+    }
+    avoided = true;
+  }
+  revealRect(tableRect(t));          // 万一被挪到视野外，把视图跟过去
+  sel = {kind:"table", id:t.id};
+  render(); snap();
+  if (!quiet) toast(avoided ? `已添加到模块「${m.name}」，并避开了已有表` : `已添加到模块「${m.name}」`);
+}
+
+/* =========================================================
+   13. 导出
+   ========================================================= */
+/* 导出图例（仅在导出物中出现） */
+function legendMarkup(x, y){
+  const items = [
+    {b:"PK", t:"主键", bg:"#ede9fe", fg:"#6d4bd8"},
+    {b:"FK", t:"外键", bg:"#fef1e2", fg:"#c2761a"},
+    {b:"UK", t:"唯一", bg:"#eef2f7", fg:"#7b8798"},
+    {d:"anc", t:"列锚点"},
+    {m:"one",  t:"唯一端"},
+    {m:"many", t:"多端"}
+  ];
+  let cx = x, s = "";
+  s += `<text class="er-ml" x="${cx}" y="${y + 11}" fill="#94a3b8">LEGEND</text>`;
+  cx += tw("LEGEND", FONT.label) + 6 * 0.9 + 20;
+  for (const it of items){
+    if (it.b){
+      s += `<rect x="${cx}" y="${y}" width="22" height="14" rx="4" fill="${it.bg}"/>`;
+      s += `<text class="er-bd" x="${cx + 11}" y="${y + 10.2}" text-anchor="middle" fill="${it.fg}">${it.b}</text>`;
+      cx += 28;
+    } else if (it.d){
+      s += `<circle cx="${cx + 5}" cy="${y + 7}" r="4.6" fill="#fff" stroke="#6d4bd8" stroke-width="1.4"/>`;
+      s += `<circle cx="${cx + 5}" cy="${y + 7}" r="1.8" fill="#6d4bd8"/>`;
+      cx += 14;
+    } else {
+      const cy = y + 7;
+      if (it.m === "one"){
+        s += `<path d="M${cx} ${cy} H${cx + 15}" stroke="#9aa5b5" stroke-width="1.4" stroke-linecap="round"/>`;
+        s += `<path d="M${cx + 15} ${cy - 6} V${cy + 6}" stroke="#9aa5b5" stroke-width="1.7" stroke-linecap="round"/>`;
+      } else {
+        s += `<path d="M${cx} ${cy} H${cx + 11}" stroke="#9aa5b5" stroke-width="1.4" stroke-linecap="round"/>`;
+        s += `<path d="M${cx + 11} ${cy} H${cx + 22} M${cx + 11} ${cy} L${cx + 22} ${cy - 6} M${cx + 11} ${cy} L${cx + 22} ${cy + 6}"
+                stroke="#9aa5b5" stroke-width="1.4" fill="none" stroke-linecap="round"/>`;
+      }
+      cx += 30;
+    }
+    s += `<text class="er-rl" x="${cx}" y="${y + 11}" fill="#7b8798">${esc(it.t)}</text>`;
+    cx += tw(it.t, FONT.rel) + 18;
+  }
+  return s;
+}
+
+/* ---------- 模型内嵌（保证导出的 SVG 能被再次导入） ---------- */
+const MODEL_ATTR   = "data-er-model";
+const MODEL_FORMAT = 2;      // 2：列多了 comment / nn / def，表多了 showMeta
+
+/* UTF-8 安全的 base64：手工分段，避免 String.fromCharCode 参数过多 */
+function b64encode(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decode(b){
+  const bin = atob(b);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+/* 导出时写进 <metadata> 的完整模型：与 localStorage / 撤销栈同一份序列化结果 */
+function modelMetadata(){
+  const payload = {app:"er-designer", format:MODEL_FORMAT, exportedAt:new Date().toISOString(),
+                   data: JSON.parse(serialize())};
+  return `<metadata ${MODEL_ATTR}="${MODEL_FORMAT}" data-app="er-designer" data-encoding="base64">`
+       + b64encode(JSON.stringify(payload)) + `</metadata>`;
+}
+
+function buildExportSVG(){
+  sideUse = buildSideUse();
+  const bb = contentBBox();
+  const pad = 40;
+  const w = Math.round(bb.w + pad*2);
+  const h = Math.round(bb.h + pad*2 + 30);
+  let body = "";
+  for (const m of S.modules) body += moduleMarkup(m);
+  for (const r of S.rels)    body += relLineMarkup(r, true);
+  for (const t of S.tables)  body += tableMarkup(t, true);
+  for (const r of S.rels)    body += relLabelMarkup(r, true);
+  body += legendMarkup(bb.x, bb.y + bb.h + 8);
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"
+    viewBox="${bb.x - pad} ${bb.y - pad} ${w} ${h}">
+    <title>er-diagram</title>
+    <desc>由「数据库关系设计器」导出。metadata 中含完整模型数据（base64），可用工具里的「导入 SVG」再次打开继续编辑 —— 请勿删除 metadata。</desc>
+    ${modelMetadata()}${SVG_STYLE}${DEFS}
+    <rect x="${bb.x - pad}" y="${bb.y - pad}" width="${w}" height="${h}" fill="#ffffff"/>
+    ${body}
+  </svg>`;
+  return {svg, w, h};
+}
+
+function download(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+}
+
+document.getElementById("btnSvg").addEventListener("click", () => {
+  if (!S.modules.length){ toast("画布为空，无可导出内容", true); return; }
+  const {svg} = buildExportSVG();
+  download(new Blob([svg], {type:"image/svg+xml;charset=utf-8"}), stampName("er-diagram", "svg"));
+  toast("SVG 已导出 · 内含模型，可直接拖回来继续改");
+});
+
+/* 文件名带时间戳，多次导出不会撞成 er-diagram(1).svg */
+function stampName(base, ext){
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${base}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.${ext}`;
+}
+
+/* =========================================================
+   13b. 导入：把导出的 SVG 读回模型
+   ========================================================= */
+/* 返回 {payload} 或 {error}，错误信息直接拿去 toast */
+function extractModel(text){
+  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+  if (doc.querySelector("parsererror")) return {error:"这不是合法的 SVG（XML 解析失败）"};
+  const root = doc.documentElement;
+  if (!root || (root.nodeName || "").toLowerCase() !== "svg") return {error:"这不是 SVG 文件"};
+
+  const node = doc.querySelector(`metadata[${MODEL_ATTR}]`);
+  if (!node) return {error:"这个 SVG 里没有编辑器数据 —— 可能是别的工具生成的，或 metadata 被删掉了"};
+  const raw = (node.textContent || "").trim();
+  if (!raw) return {error:"SVG 里的模型数据是空的"};
+
+  let payload = null;
+  try{ payload = JSON.parse(b64decode(raw)); }
+  catch (err){ return {error:"模型数据无法解析，文件可能被改动过"}; }
+  if (!payload || !payload.data || !Array.isArray(payload.data.modules))
+    return {error:"模型数据不完整，无法恢复"};
+
+  const fmt = +(node.getAttribute(MODEL_ATTR) || 0);
+  const newer = fmt > MODEL_FORMAT || +(payload.format || 0) > MODEL_FORMAT;
+  return {payload, newer};
+}
+
+/* 把外来数据洗成当前实现能直接渲染的形状，返回被丢弃的条目数 */
+function adoptModel(d){
+  S = {seq: Math.max(1, Math.round(+(d.seq) || 1)),
+       modules: Array.isArray(d.modules) ? d.modules : [],
+       tables:  Array.isArray(d.tables)  ? d.tables  : [],
+       rels:    Array.isArray(d.rels)    ? d.rels    : []};
+  let lostTables = 0, lostRels = 0;
+
+  /* 模块：补 id / 名字 / 坐标 / 配色 */
+  const modIds = new Set();
+  for (const m of S.modules){
+    if (!m || typeof m !== "object") continue;
+    if (!m.id || modIds.has(m.id)) m.id = uid("m");
+    modIds.add(m.id);
+    if (typeof m.name !== "string" || !m.name) m.name = "模块";
+    m.x = Number.isFinite(+m.x) ? Math.round(+m.x) : 0;
+    m.y = Number.isFinite(+m.y) ? Math.round(+m.y) : 0;
+    m.w = (Number.isFinite(+m.w) && +m.w > 0) ? Math.round(+m.w) : M_MIN_W;
+    m.h = (Number.isFinite(+m.h) && +m.h > 0) ? Math.round(+m.h) : M_MIN_H;
+    m.colorIdx = Number.isFinite(+m.colorIdx) ? (+m.colorIdx % PALETTES.length) : 0;
+  }
+  S.modules = S.modules.filter(m => m && m.id);
+
+  /* 表：必须属于存在的模块，否则无处安放 */
+  const tblIds = new Set(), kept = [];
+  for (const t of S.tables){
+    if (!t || typeof t !== "object" || !modIds.has(t.moduleId)){ lostTables++; continue; }
+    if (!t.id || tblIds.has(t.id)) t.id = uid("t");
+    tblIds.add(t.id);
+    if (typeof t.name !== "string" || !t.name) t.name = "新表";
+    t.x = Number.isFinite(+t.x) ? Math.round(+t.x) : 0;
+    t.y = Number.isFinite(+t.y) ? Math.round(+t.y) : 0;
+    t.showMeta = !!t.showMeta;
+    t.cols = (Array.isArray(t.cols) ? t.cols : []).filter(c => c && typeof c === "object");
+    const colIds = new Set();
+    for (const c of t.cols){
+      if (!c.id || colIds.has(c.id)) c.id = uid("c");
+      colIds.add(c.id);
+      c.name = c.name == null ? "" : String(c.name);
+      c.type = c.type == null ? "" : String(c.type);
+      c.pk = !!c.pk; c.fk = !!c.fk; c.uk = !!c.uk;
+      c.comment = c.comment == null ? "" : String(c.comment);
+      c.nn = !!c.nn;
+      c.def = c.def == null ? "" : String(c.def);
+    }
+    kept.push(t);
+  }
+  S.tables = kept;
+
+  /* 关系：两端都得在 */
+  S.rels = S.rels.filter(r => {
+    const ok = r && r.from && r.to && tblIds.has(r.from.t) && tblIds.has(r.to.t);
+    if (!ok) lostRels++;
+    return ok;
+  });
+  const relIds = new Set();
+  for (const r of S.rels){
+    if (!r.id || relIds.has(r.id)) r.id = uid("r");
+    relIds.add(r.id);
+    if (!["1:1", "1:N", "N:N"].includes(r.type)) r.type = "1:N";
+    r.label = r.label == null ? "" : String(r.label);
+    // 列级端点若指向不存在的列，退化为整表连线，别让渲染炸掉
+    for (const end of [r.from, r.to]){
+      if (end.c && !getTable(end.t).cols.some(c => c.id === end.c)) end.c = null;
+    }
+  }
+  migrateRels();
+  return {lostTables, lostRels};
+}
+
+function applyModel(payload, fileName, newer){
+  if (S.modules.length || S.tables.length){
+    const ok = confirm(`导入会替换当前画布（${S.modules.length} 个模块 / ${S.tables.length} 张表），继续？`);
+    if (!ok) return false;
+  }
+  const {lostTables, lostRels} = adoptModel(payload.data || {});
+  sel = null; closePops();
+  fit(); snap(); save();
+
+  const lost = lostTables + lostRels;
+  const when = typeof payload.exportedAt === "string" ? payload.exportedAt.slice(0, 10) : "";
+  const base = `已导入「${fileName}」· ${S.modules.length} 个模块 / ${S.tables.length} 张表`;
+  if (lost) toast(`${base}，另有 ${lost} 条数据无效已跳过`, true);
+  else if (newer) toast(`${base}（文件来自更新版本，可能有兼容问题）`, true);
+  else toast(when ? `${base} · 导出于 ${when}` : base);
+  return true;
+}
+
+const fileSvg = document.getElementById("fileSvg");
+document.getElementById("btnImport").addEventListener("click", () => fileSvg.click());
+fileSvg.addEventListener("change", () => {
+  const f = fileSvg.files && fileSvg.files[0];
+  fileSvg.value = "";                     // 允许重复导入同一个文件
+  if (f) importSvgFile(f);
+});
+
+function importSvgFile(file){
+  if (!/\.svg$/i.test(file.name || "") && file.type !== "image/svg+xml"){
+    toast("请选择 .svg 文件", true); return;
+  }
+  const fr = new FileReader();
+  fr.onload = () => {
+    const r = extractModel(String(fr.result || ""));
+    if (r.error){ toast(r.error, true); return; }
+    applyModel(r.payload, file.name || "未命名.svg", r.newer);
+  };
+  fr.onerror = () => toast("文件读取失败", true);
+  fr.readAsText(file, "utf-8");
+}
+
+/* 直接把 .svg 拖进画布也能导入 */
+["dragenter", "dragover"].forEach(t => wrap.addEventListener(t, e => {
+  const dt = e.dataTransfer;
+  if (!dt || !Array.from(dt.types || []).includes("Files")) return;
+  e.preventDefault(); dt.dropEffect = "copy";
+  wrap.classList.add("dropping");
+}));
+wrap.addEventListener("dragleave", e => {
+  if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+  wrap.classList.remove("dropping");
+});
+wrap.addEventListener("drop", e => {
+  const dt = e.dataTransfer;
+  wrap.classList.remove("dropping");
+  if (!dt || !dt.files || !dt.files.length) return;
+  e.preventDefault();
+  importSvgFile(dt.files[0]);
+});
+/* 拖到画布外松手时，别让浏览器把当前页替换成那个文件 */
+const hasFiles = dt => !!dt && Array.from(dt.types || []).includes("Files");
+window.addEventListener("dragover", e => { if (hasFiles(e.dataTransfer)) e.preventDefault(); });
+window.addEventListener("drop", e => { if (hasFiles(e.dataTransfer)) e.preventDefault(); });
+
+document.getElementById("btnPng").addEventListener("click", () => {
+  if (!S.modules.length){ toast("画布为空，无可导出内容", true); return; }
+  const {svg, w, h} = buildExportSVG();
+  const url = URL.createObjectURL(new Blob([svg], {type:"image/svg+xml;charset=utf-8"}));
+  const img = new Image();
+  img.onload = () => {
+    const scale = clamp(2, 0.5, 4200 / Math.max(w, h));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(w * scale);
+    cv.height = Math.round(h * scale);
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    cv.toBlob(b => { download(b, stampName("er-diagram", "png")); toast(`PNG 已导出 · ${cv.width}×${cv.height}`); }, "image/png");
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast("PNG 生成失败", true); };
+  img.src = url;
+});
+
+/* =========================================================
+   13c. DDL 解析（CREATE TABLE → {name, cols, fks}）
+   支持 MySQL / PostgreSQL / SQL Server 的常见写法，够用即可
+   ========================================================= */
+const unquote = s => {
+  s = String(s == null ? "" : s).trim();
+  if (/^'.*'$/.test(s) || /^`.*`$/.test(s) || /^".*"$/.test(s)) return s.slice(1, -1);
+  if (/^\[.*\]$/.test(s)) return s.slice(1, -1);
+  return s;
+};
+const unquoteStr = s => unquote(s).replace(/''/g, "'");
+
+/* 去掉 SQL 的 -- 行注释、块注释与 # 注释，字符串与标识符里的内容原样保留 */
+function stripSqlComments(src){
+  let out = "", i = 0;
+  const n = src.length;
+  while (i < n){
+    const ch = src[i], nx = src[i+1];
+    if (ch === "'" || ch === '"' || ch === "`"){
+      const q = ch; let j = i + 1;
+      while (j < n){
+        if (src[j] === "\\" && q !== "`"){ j += 2; continue; }
+        if (src[j] === q){
+          if (src[j+1] === q){ j += 2; continue; }
+          j++; break;
+        }
+        j++;
+      }
+      out += src.slice(i, j); i = j; continue;
+    }
+    if ((ch === "-" && nx === "-") || ch === "#"){
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && nx === "*"){
+      i += 2;
+      while (i < n && !(src[i] === "*" && src[i+1] === "/")) i++;
+      i = Math.min(n, i + 2); continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
+
+/* 按顶层分隔符切分：括号内、引号内的不切 */
+function splitTop(s, sep){
+  const out = []; let depth = 0, cur = "", q = null;
+  for (let i = 0; i < s.length; i++){
+    const ch = s[i];
+    if (q){
+      cur += ch;
+      if (ch === "\\" && q !== "`"){ cur += s[++i] || ""; continue; }
+      if (ch === q){
+        if (s[i+1] === q){ cur += s[++i]; continue; }
+        q = null;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`"){ q = ch; cur += ch; continue; }
+    if (ch === "(" || ch === "["){ depth++; cur += ch; continue; }
+    if (ch === ")" || ch === "]"){ depth--; cur += ch; continue; }
+    if (ch === sep && depth <= 0){ out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.map(x => x.trim()).filter(Boolean);
+}
+
+/* 从 open 位置找配对的右括号 */
+function matchParen(s, open){
+  let depth = 0, q = null;
+  for (let i = open; i < s.length; i++){
+    const ch = s[i];
+    if (q){
+      if (ch === "\\" && q !== "`"){ i++; continue; }
+      if (ch === q){ if (s[i+1] === q){ i++; continue; } q = null; }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`"){ q = ch; continue; }
+    if (ch === "(") depth++;
+    else if (ch === ")"){ depth--; if (!depth) return i; }
+  }
+  return -1;
+}
+
+function splitTableName(raw){
+  const parts = String(raw || "").split(".").map(unquote).filter(Boolean);
+  return {schema: parts.length > 1 ? parts[parts.length - 2] : "", name: parts[parts.length - 1] || ""};
+}
+
+/* 列定义：名字 类型 [约束...] */
+function parseColumnDef(def){
+  const m = def.match(/^\s*(`[^`]+`|"[^"]+"|\[[^\]]+\]|[^\s]+)\s*([\s\S]*)$/);
+  if (!m) return null;
+  const name = unquote(m[1]);
+  if (!name) return null;
+  if (/^(PRIMARY|UNIQUE|FOREIGN|CONSTRAINT|KEY|INDEX|CHECK|LIKE|EXCLUDE|PERIOD)$/i.test(name)) return null;
+
+  const rest = m[2] || "";
+  const STOP = /(\s+NOT\s+NULL|\s+NULL\b|\s+DEFAULT\b|\s+PRIMARY\s+KEY|\s+UNIQUE\b|\s+REFERENCES\b|\s+COMMENT\b|\s+AUTO_INCREMENT\b|\s+COLLATE\b|\s+CHECK\b|\s+GENERATED\b|\s+CONSTRAINT\b|\s+CHARACTER\s+SET\b|\s+ON\s+UPDATE\b)/i;
+  const at = rest.search(STOP);
+  const type = (at >= 0 ? rest.slice(0, at) : rest).trim().replace(/\s+/g, " ");
+
+  const cm = rest.match(/\bCOMMENT\s+('(?:[^']|'')*'|"[^"]*")/i);
+  const dm = rest.match(/\bDEFAULT\s+('(?:[^']|'')*'|\([^()]*\)|[^\s,;]+)/i);
+  const ref = rest.match(/\bREFERENCES\s+([^\s(]+)\s*(?:\(([^)]*)\))?/i);
+
+  return {
+    name,
+    type: type || "",
+    pk: /\bPRIMARY\s+KEY\b/i.test(rest),
+    uk: /\bUNIQUE\b/i.test(rest),
+    fk: !!ref,
+    nn: /\bNOT\s+NULL\b/i.test(rest),
+    def: dm ? unquoteStr(dm[1]) : "",
+    comment: cm ? unquoteStr(cm[1]) : "",
+    refTable: ref ? splitTableName(ref[1]).name : "",
+    refCol: ref && ref[2] ? unquote(splitTop(ref[2], ",")[0] || "") : ""
+  };
+}
+
+function parseTableBody(name, body){
+  const t = {name: name || "", comment: "", cols: [], fks: []};
+  const byName = new Map();
+  for (const def of splitTop(body, ",")){
+    let m;
+    if ((m = def.match(/^(?:CONSTRAINT\s+[^\s]+\s+)?PRIMARY\s+KEY\s*\(([^)]*)\)/i))){
+      for (const cn of splitTop(m[1], ",")){
+        const c = byName.get(unquote(cn).toLowerCase());
+        if (c) c.pk = true;
+      }
+      continue;
+    }
+    if ((m = def.match(/^(?:CONSTRAINT\s+[^\s]+\s+)?UNIQUE(?:\s+(?:KEY|INDEX))?\s*(?:[^\s(]+\s*)?\(([^)]*)\)/i))){
+      for (const cn of splitTop(m[1], ",")){
+        const c = byName.get(unquote(cn).toLowerCase());
+        if (c) c.uk = true;
+      }
+      continue;
+    }
+    if ((m = def.match(/^(?:CONSTRAINT\s+[^\s]+\s+)?FOREIGN\s+KEY\s*\(([^)]*)\)\s*REFERENCES\s+([^\s(]+)\s*(?:\(([^)]*)\))?/i))){
+      const cols = splitTop(m[1], ",").map(x => unquote(x).toLowerCase());
+      const to = splitTableName(m[2]);
+      const toCols = m[3] ? splitTop(m[3], ",").map(x => unquote(x)) : [];
+      cols.forEach((cn, i) => {
+        const c = byName.get(cn);
+        if (c) c.fk = true;
+        t.fks.push({col: c ? c.name : cn, toTable: to.name, toCol: toCols[i] || null});
+      });
+      continue;
+    }
+    if (/^(?:KEY|INDEX|FULLTEXT|SPATIAL|CHECK|EXCLUDE|CONSTRAINT|PERIOD|LIKE)\b/i.test(def)) continue;
+
+    const c = parseColumnDef(def);
+    if (!c) continue;
+    if (byName.has(c.name.toLowerCase())) continue;     // 同名列只留第一条
+    t.cols.push(c);
+    byName.set(c.name.toLowerCase(), c);
+    if (c.fk && c.refTable) t.fks.push({col: c.name, toTable: c.refTable, toCol: c.refCol || null});
+  }
+  return t;
+}
+
+/* 主入口：返回 [{name, schema, comment, cols, fks}]；没有 CREATE TABLE 时把整段当列定义 */
+function parseDDL(text){
+  const src = stripSqlComments(String(text == null ? "" : text));
+  const out = [];
+  for (const stmt of splitTop(src, ";")){
+    const m = stmt.match(/CREATE\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/i);
+    if (!m) continue;
+    const headEnd = m.index + m[0].length;
+    const open = stmt.indexOf("(", headEnd);
+    if (open < 0) continue;
+    const close = matchParen(stmt, open);
+    if (close < 0) continue;
+    const nm = splitTableName(stmt.slice(headEnd, open));
+    const t = parseTableBody(nm.name, stmt.slice(open + 1, close));
+    t.schema = nm.schema;
+    const tail = stmt.slice(close + 1);
+    const cm = tail.match(/COMMENT\s*=?\s*('(?:[^']|'')*'|"[^"]*")/i);
+    if (cm) t.comment = unquoteStr(cm[1]);
+    if (t.cols.length) out.push(t);
+  }
+  if (!out.length){
+    let body = src.trim();
+    if (body.startsWith("(") && body.endsWith(")")) body = body.slice(1, -1);
+    const t = parseTableBody("", body);
+    // 没写类型的当噪声丢掉，避免把一段普通文字当成一个字段
+    t.cols = t.cols.filter(c => c.type && !/\s/.test(c.name));
+    if (t.cols.length){ t.schema = ""; out.push(t); }
+  }
+  return out;
+}
+
+/* =========================================================
+   13d. DDL 导入面板（单表灌字段 / 整库建表）
+   ========================================================= */
+const ddlModal   = document.getElementById("ddlModal");
+const ddlTextEl  = document.getElementById("ddlText");
+const ddlPreview = document.getElementById("ddlPreview");
+const ddlTitle   = document.getElementById("ddlTitle");
+const ddlSub     = document.getElementById("ddlSub");
+const ddlAppend  = document.getElementById("ddlAppend");
+const ddlReplace = document.getElementById("ddlReplace");
+const ddlCreate  = document.getElementById("ddlCreate");
+
+let ddlMode = "bulk";        // "table" | "bulk"
+let ddlTableId = null;
+let ddlParsed = [];
+let ddlTimer = null;
+
+function openDdlImport(mode, tableId){
+  ddlMode = mode === "table" ? "table" : "bulk";
+  ddlTableId = tableId || null;
+  const t = ddlTableId ? getTable(ddlTableId) : null;
+  if (ddlMode === "table" && !t) return;
+
+  ddlTitle.textContent = ddlMode === "table" ? `导入字段 · ${t.name}` : "粘贴 DDL 建表";
+  ddlSub.innerHTML = ddlMode === "table"
+    ? "贴这张表的建表语句即可；只贴列定义（例如 <code>id bigint, email varchar(255)</code>）也认。"
+    : "一次贴多张 <code>CREATE TABLE</code>：自动建模块、排好位置，并按 FOREIGN KEY 连线。";
+  ddlAppend.style.display  = ddlMode === "table" ? "" : "none";
+  ddlReplace.style.display = ddlMode === "table" ? "" : "none";
+  ddlCreate.style.display  = ddlMode === "table" ? "none" : "";
+
+  ddlTextEl.value = "";
+  ddlParsed = [];
+  ddlModal.classList.add("on");
+  renderDdlPreview();
+  setTimeout(() => ddlTextEl.focus(), 40);
+}
+function closeDdlImport(){ ddlModal.classList.remove("on"); }
+
+function renderDdlPreview(){
+  const raw = ddlTextEl.value.trim();
+  if (!raw){
+    ddlParsed = [];
+    ddlPreview.innerHTML = `<div class="dp-empty">还没有内容 —— 粘贴建表语句后，这里会显示解析结果</div>`;
+    syncDdlBtns(); return;
+  }
+  ddlParsed = parseDDL(raw);
+  if (!ddlParsed.length){
+    ddlParsed = [];
+    ddlPreview.innerHTML = `<div class="dp-empty">没认出字段 —— 确认是 <code>CREATE TABLE</code> 或「列名 类型」逐行的写法</div>`;
+    syncDdlBtns(); return;
+  }
+
+  let s = "";
+  if (ddlMode === "table"){
+    const p = ddlParsed[0];
+    const cur = getTable(ddlTableId);
+    const tag = c => (c.pk ? `<span class="dp-tag pk">PK</span>` : "") +
+                     (c.fk ? `<span class="dp-tag fk">FK</span>` : "") +
+                     (c.uk ? `<span class="dp-tag uk">UK</span>` : "");
+    s += `<div class="dp-t">认出 ${p.cols.length} 个字段${p.fks.length ? `，其中 ${p.fks.length} 个外键` : ""}</div>`;
+    if (cur && p.name && p.name.toLowerCase() !== cur.name.toLowerCase())
+      s += `<div class="dp-warn">DDL 里的表名是「${esc(p.name)}」，字段会被导入到当前这张「${esc(cur.name)}」</div>`;
+    s += p.cols.slice(0, 14).map(c =>
+      `<div class="dp-r"><span class="dp-n">${esc(c.name)}</span>${tag(c)}` +
+      `<span class="dp-ty">${esc(c.type || "—")}</span>` +
+      `<span class="dp-cm">${esc(c.comment || "")}</span></div>`).join("");
+    if (p.cols.length > 14) s += `<div class="dp-more">…还有 ${p.cols.length - 14} 个字段</div>`;
+    if (ddlParsed.length > 1)
+      s += `<div class="dp-more">文件里有 ${ddlParsed.length} 张表，单表导入只取第 1 张「${esc(p.name || "未命名")}」</div>`;
+  } else {
+    const cols = ddlParsed.reduce((n, p) => n + p.cols.length, 0);
+    const fks  = ddlParsed.reduce((n, p) => n + p.fks.length, 0);
+    s += `<div class="dp-t">认出 ${ddlParsed.length} 张表 · ${cols} 个字段 · ${fks} 个外键</div>`;
+    for (const p of ddlParsed.slice(0, 10)){
+      s += `<div class="dp-r"><span class="dp-n">${esc(p.name || "（未命名）")}</span>` +
+           `<span class="dp-ty">${p.cols.length} 列${p.fks.length ? ` · ${p.fks.length} 外键` : ""}` +
+           `${p.schema ? ` · schema ${esc(p.schema)}` : ""}</span></div>`;
+    }
+    if (ddlParsed.length > 10) s += `<div class="dp-more">…还有 ${ddlParsed.length - 10} 张</div>`;
+  }
+  ddlPreview.innerHTML = s;
+  syncDdlBtns();
+}
+
+function syncDdlBtns(){
+  const ok = ddlParsed.length > 0;
+  ddlAppend.disabled = !ok;
+  ddlReplace.disabled = !ok;
+  ddlCreate.disabled = !ok;
+}
+
+/* 按外键把当前表连到画布上已有的目标表 */
+function autoLinkFks(t, fks){
+  let n = 0;
+  for (const fk of fks || []){
+    const src = t.cols.find(c => c.name.toLowerCase() === String(fk.col || "").toLowerCase());
+    const to = S.tables.find(x => x.id !== t.id && x.name.toLowerCase() === String(fk.toTable || "").toLowerCase());
+    if (!src || !to) continue;
+    const toCol = fk.toCol
+      ? to.cols.find(c => c.name.toLowerCase() === String(fk.toCol).toLowerCase())
+      : (to.cols.find(c => c.pk) || null);
+    const from = toCol ? {t:to.id, c:toCol.id} : {t:to.id, c:null};
+    const dup = S.rels.some(r => {
+      const [a, b] = relEnds(r);
+      return a.t === from.t && a.c === from.c && b.t === t.id && b.c === src.id;
+    });
+    if (dup) continue;
+    S.rels.push({id:uid("r"), from, to:{t:t.id, c:src.id}, type:"1:N", label:""});
+    n++;
+  }
+  return n;
+}
+
+function ddlApplyTable(mode){
+  const t = getTable(ddlTableId);
+  const p = ddlParsed[0];
+  if (!t || !p || !p.cols.length) return;
+  let droppedRels = 0;
+
+  if (mode === "replace"){
+    const ids = new Set(t.cols.map(c => c.id));
+    const keep = S.rels.filter(r => !relEnds(r).some(e => e.c && ids.has(e.c)));
+    droppedRels = S.rels.length - keep.length;
+    S.rels = keep;
+    t.cols = [];
+  }
+  const have = new Set(t.cols.map(c => c.name.toLowerCase()));
+  let added = 0, skipped = 0;
+  for (const c of p.cols){
+    const k = c.name.toLowerCase();
+    if (have.has(k)){ skipped++; continue; }
+    t.cols.push({id:uid("c"), name:c.name, type:c.type, pk:!!c.pk, fk:!!c.fk, uk:!!c.uk,
+                 comment:c.comment || "", nn:!!c.nn, def:c.def || ""});
+    have.add(k); added++;
+  }
+  const linked = autoLinkFks(t, p.fks);
+  closeDdlImport();
+
+  let shifted = false, stuck = false;
+  if (tableHit(t) || moduleCollides(getModule(t.moduleId))){
+    if (seekTableSpot(t, {x:t.x, y:t.y})) shifted = true; else stuck = true;
+  }
+  render(); snap(); save();
+  const bits = [`新增 ${added} 个字段`];
+  if (skipped) bits.push(`跳过 ${skipped} 个重名`);
+  if (droppedRels) bits.push(`移除 ${droppedRels} 条旧关联`);
+  if (linked) bits.push(`连上 ${linked} 条外键`);
+  if (shifted) bits.push("已错开下方的表");
+  if (stuck) bits.push("下方空间不足，请挪一下其他表");
+  toast(bits.join(" · "), stuck);
+}
+
+/* 网格排布：把一批表塞进模块左上角开始的位置 */
+function layoutGrid(m, tables){
+  const gapX = 34, gapY = 26, pad = M_PAD;
+  const perRow = Math.max(1, Math.ceil(Math.sqrt(tables.length)));
+  const r0 = moduleRect(m);                       // 空模块时就是它自己的框
+  let x = r0.x + pad, y = r0.y + pad, rowH = 0, col = 0;
+  for (const t of tables){
+    const L = tableLayout(t);
+    if (col === perRow){ col = 0; x = r0.x + pad; y += rowH + gapY; rowH = 0; }
+    t.x = Math.round(x); t.y = Math.round(y); t.moduleId = m.id;
+    x += L.w + gapX;
+    rowH = Math.max(rowH, L.h);
+    col++;
+  }
+}
+
+/* 找一块 w×h 的空地（从视口中心向外逐环扫描） */
+function findBlockSpot(w, h){
+  const hit = (x, y) => S.modules.some(m => overlap({x, y, w, h}, moduleRect(m), 30));
+  const cx = Math.round((wrap.clientWidth / 2 - view.x) / view.k - w / 2);
+  const cy = Math.round((wrap.clientHeight / 2 - view.y) / view.k - h / 2);
+  if (!hit(cx, cy)) return {x:cx, y:cy};
+  const stepX = Math.max(90, w * 0.55), stepY = Math.max(90, h * 0.55);
+  for (let ring = 1; ring <= 26; ring++){
+    for (let dy = -ring; dy <= ring; dy++){
+      for (let dx = -ring; dx <= ring; dx++){
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+        const x = Math.round(cx + dx * stepX), y = Math.round(cy + dy * stepY);
+        if (!hit(x, y)) return {x, y};
+      }
+    }
+  }
+  return {x:cx, y:cy};
+}
+
+function ddlApplyBulk(){
+  if (!ddlParsed.length) return;
+  const exist = new Set(S.tables.map(t => t.name.toLowerCase()));
+  const fresh = ddlParsed.filter(p => p.name && !exist.has(p.name.toLowerCase()));
+  const skipped = ddlParsed.length - fresh.length;
+  if (!fresh.length){ closeDdlImport(); toast("这些表画布上都已经有了，没有新建", true); return; }
+
+  const m = {id:uid("m"), name:"", x:0, y:0, colorIdx: S.modules.length % PALETTES.length};
+  m.name = fresh[0].schema || `导入 ${fresh.length} 张表`;
+  S.modules.push(m);
+
+  const made = [];
+  for (const p of fresh){
+    const t = {id:uid("t"), moduleId:m.id, name:p.name, x:0, y:0, showMeta:false, cols:[]};
+    for (const c of p.cols){
+      t.cols.push({id:uid("c"), name:c.name, type:c.type, pk:!!c.pk, fk:!!c.fk, uk:!!c.uk,
+                   comment:c.comment || "", nn:!!c.nn, def:c.def || ""});
+    }
+    S.tables.push(t);
+    made.push({t, p});
+  }
+
+  layoutGrid(m, made.map(x => x.t));
+  const r = moduleRect(m);
+  const spot = findBlockSpot(r.w, r.h);
+  const dx = spot.x - r.x, dy = spot.y - r.y;
+  m.x = spot.x; m.y = spot.y;
+  for (const {t} of made){ t.x += dx; t.y += dy; }
+
+  let linked = 0;
+  for (const {t, p} of made) linked += autoLinkFks(t, p.fks);
+
+  closeDdlImport();
+  fit(); snap(); save();
+  const cols = made.reduce((n, x) => n + x.t.cols.length, 0);
+  toast(`已建 ${made.length} 张表 · ${cols} 个字段` +
+        (linked ? ` · ${linked} 条外键` : "") +
+        (skipped ? ` · 跳过 ${skipped} 张同名表` : ""));
+}
+
+/* ---- 面板事件 ---- */
+document.querySelectorAll('[data-act="ddl-close"]').forEach(b =>
+  b.addEventListener("click", closeDdlImport));
+ddlModal.addEventListener("mousedown", e => { if (e.target === ddlModal) closeDdlImport(); });
+ddlTextEl.addEventListener("input", () => {
+  clearTimeout(ddlTimer);
+  ddlTimer = setTimeout(renderDdlPreview, 120);
+});
+ddlTextEl.addEventListener("keydown", e => {
+  if (e.key === "Escape"){ e.preventDefault(); closeDdlImport(); }
+});
+ddlAppend.addEventListener("click", () => ddlApplyTable("append"));
+ddlReplace.addEventListener("click", () => ddlApplyTable("replace"));
+ddlCreate.addEventListener("click", () => ddlApplyBulk());
+document.getElementById("btnDdlBulk").addEventListener("click", () => openDdlImport("bulk"));
+
+const ddlFileInput = document.getElementById("ddlFileInput");
+document.getElementById("ddlFile").addEventListener("click", () => ddlFileInput.click());
+ddlFileInput.addEventListener("change", () => {
+  const f = ddlFileInput.files && ddlFileInput.files[0];
+  ddlFileInput.value = "";
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => { ddlTextEl.value = String(fr.result || ""); renderDdlPreview(); };
+  fr.onerror = () => toast("文件读取失败", true);
+  fr.readAsText(f, "utf-8");
+});
+
+/* =========================================================
+   14. 顶栏按钮
+   ========================================================= */
+document.getElementById("btnIn").addEventListener("click", () => zoomAt(1.15));
+document.getElementById("btnOut").addEventListener("click", () => zoomAt(1/1.15));
+document.getElementById("btnFit").addEventListener("click", fit);
+document.getElementById("btnUndo").addEventListener("click", () => stepHist(-1));
+document.getElementById("btnRedo").addEventListener("click", () => stepHist(1));
+document.getElementById("btnAddModule").addEventListener("click", () => {
+  const pt = {x:(wrap.clientWidth/2 - view.x)/view.k, y:(wrap.clientHeight/2 - view.y)/view.k};
+  createModuleAt({x:pt.x - 150, y:pt.y - 100}, true);
+});
+document.getElementById("btnClear").addEventListener("click", () => {
+  if (!S.modules.length) return;
+  if (!confirm("确定清空画布上的全部模块、表与关系？此操作不可撤销。")) return;
+  S = {seq:S.seq, modules:[], tables:[], rels:[]};
+  sel = null; closePops(); fit(); snap();
+  toast("画布已清空");
+});
+
+/* =========================================================
+   15. 提示与持久化
+   ========================================================= */
+let toastTimer = null;
+const toastEl = document.getElementById("toast");
+function toast(msg, warn){
+  toastEl.textContent = msg;
+  toastEl.className = "toast on" + (warn ? " warn" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.className = "toast"; }, 2400);
+}
+
+let saveTimer = null;
+function saveSoon(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 500);
+}
+
+/* 序列化（剥离布局缓存等临时字段，供存储与历史共用） */
+function serialize(){
+  return JSON.stringify({
+    seq: S.seq,
+    modules: S.modules.map(m => ({id:m.id, name:m.name, x:m.x, y:m.y,
+      w:(m.w > 0 ? m.w : M_MIN_W), h:(m.h > 0 ? m.h : M_MIN_H), colorIdx:m.colorIdx})),
+    tables: S.tables.map(t => ({id:t.id, moduleId:t.moduleId, x:t.x, y:t.y, name:t.name,
+      showMeta: !!t.showMeta,
+      cols:t.cols.map(c => ({id:c.id, name:c.name, type:c.type, pk:!!c.pk, fk:!!c.fk, uk:!!c.uk,
+        comment:c.comment || "", nn:!!c.nn, def:c.def || ""}))})),
+    rels: S.rels.map(r => {
+      const [a, b] = relEnds(r);
+      return {id:r.id, from:{t:a.t, c:a.c}, to:{t:b.t, c:b.c}, type:r.type, label:r.label};
+    })
+  });
+}
+function hydrate(str){
+  const d = JSON.parse(str);
+  S = {seq:d.seq || 1, modules:d.modules || [], tables:d.tables || [], rels:d.rels || []};
+  migrateRels();
+}
+
+/* 旧数据升级：整表连线按外键列名猜出对应的 PK/FK 两列 */
+function migrateRels(){
+  for (const r of S.rels){
+    const [a, b] = relEnds(r);
+    if (a.c || b.c) continue;               // 已经是列级，跳过
+    const ta = getTable(a.t), tb = getTable(b.t);
+    if (!ta || !tb || ta.id === tb.id) continue;
+    let g = guessFkPair(ta, tb);            // ta 是外键方
+    if (g){ r.from = {t:tb.id, c:g[0].id}; r.to = {t:ta.id, c:g[1].id}; continue; }
+    g = guessFkPair(tb, ta);                // tb 是外键方
+    if (g){ r.from = {t:ta.id, c:g[0].id}; r.to = {t:tb.id, c:g[1].id}; }
+  }
+}
+/* 在 fkTable 里找指向 pkTable 的外键列；返回 [pk列, fk列] */
+function guessFkPair(fkTable, pkTable){
+  const pk = pkTable.cols.find(c => c.pk);
+  if (!pk) return null;
+  const base = (pkTable.name || "").toLowerCase().replace(/[^a-z0-9_]/g, "");
+  if (!base) return null;
+  const aliases = [base, base + "s", base.replace(/s$/, "")];
+  const fk = fkTable.cols.find(c => {
+    const n = (c.name || "").toLowerCase();
+    if (!/(_id|id|_fk|fk)$/.test(n)) return false;
+    const stem = n.replace(/^fk_/, "").replace(/_id$/, "").replace(/_fk$/, "").replace(/id$/, "");
+    return !!stem && aliases.some(al => al && (stem === al || stem === al.replace(/s$/, "")));
+  });
+  return fk ? [pk, fk] : null;
+}
+function save(){
+  try{ localStorage.setItem(LS_KEY, serialize()); }catch(err){ /* 忽略配额错误 */ }
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    hydrate(raw);
+    return S.modules.length > 0;
+  }catch(err){ return false; }
+}
+
+/* ---------- 撤销 / 重做 ---------- */
+const HIST = {stack:[], idx:-1};
+function snap(){
+  syncModuleBoxes();                 // 快照与画面用同一份坐标，撤销后才不会跳
+  const s = serialize();
+  if (HIST.idx >= 0 && HIST.stack[HIST.idx] === s) return;
+  HIST.stack = HIST.stack.slice(0, HIST.idx + 1);
+  HIST.stack.push(s);
+  if (HIST.stack.length > 80) HIST.stack.shift();
+  HIST.idx = HIST.stack.length - 1;
+  syncHistBtns();
+}
+function stepHist(delta){
+  const ni = HIST.idx + delta;
+  if (ni < 0 || ni >= HIST.stack.length) return;
+  HIST.idx = ni;
+  hydrate(HIST.stack[ni]);
+  sel = null; closePops(); render(); syncHistBtns();
+}
+function syncHistBtns(){
+  const u = document.getElementById("btnUndo"), r = document.getElementById("btnRedo");
+  if (u) u.disabled = HIST.idx <= 0;
+  if (r) r.disabled = HIST.idx >= HIST.stack.length - 1;
+}
+
+/* =========================================================
+   16. 演示数据（对齐参考截图）
+   ========================================================= */
+function seed(){
+  S = {seq:1, modules:[], tables:[], rels:[]};
+  const mk = (name, x, y, ci) => { const m = {id:uid("m"), name, x, y, colorIdx:ci}; S.modules.push(m); return m; };
+  const tb = (mid, name, x, y, cols) => {
+    const t = {id:uid("t"), moduleId:mid, name, x, y, showMeta:false, cols:[]};
+    t.cols = cols.map(([n, ty, b]) => ({id:uid("c"), name:n, type:ty,
+      pk: (b||"").includes("P"), fk: (b||"").includes("F"), uk: (b||"").includes("U"),
+      comment:"", nn:false, def:""}));
+    S.tables.push(t); return t;
+  };
+
+  const acc  = mk("Accounts", 80, 80, 0);
+  const chk  = mk("Checkout", 470, 80, 1);
+  const cat  = mk("Catalog", 80, 410, 2);
+  const line = mk("Line Items", 820, 470, 3);
+
+  const customer = tb(acc.id, "customer", 100, 110, [
+    ["id","bigint","P"], ["email","varchar(255)",""],
+    ["display_name","varchar(120)",""], ["created_at","timestamptz",""]
+  ]);
+  const order = tb(chk.id, "order", 490, 110, [
+    ["id","bigint","P"], ["customer_id","bigint","F"], ["status","varchar(32)",""],
+    ["total_amount","numeric(12,2)",""], ["currency","char(3)",""],
+    ["placed_at","timestamptz",""], ["updated_at","timestamptz",""]
+  ]);
+  const payment = tb(chk.id, "payment", 860, 110, [
+    ["id","bigint","P"], ["order_id","bigint","F"], ["method","varchar(32)",""],
+    ["amount","numeric(12,2)",""], ["paid_at","timestamptz",""], ["external_ref","varchar(64)",""]
+  ]);
+  const inventory = tb(cat.id, "inventory", 100, 440, [
+    ["id","bigint","P"], ["product_id","bigint","F"], ["warehouse_code","varchar(16)",""],
+    ["quantity","int",""], ["reserved_quantity","int",""], ["updated_at","timestamptz",""]
+  ]);
+  const product = tb(cat.id, "product", 450, 440, [
+    ["id","bigint","P"], ["sku","varchar(64)","U"], ["name","varchar(160)",""],
+    ["price","numeric(12,2)",""], ["cost_amount","numeric(12,2)",""],
+    ["active","boolean",""], ["created_at","timestamptz",""]
+  ]);
+  const orderItem = tb(line.id, "order_item", 840, 500, [
+    ["id","bigint","P"], ["order_id","bigint","F"], ["product_id","bigint","F"],
+    ["quantity","int",""], ["unit_price","numeric(12,2)",""], ["discount_amount","numeric(12,2)",""]
+  ]);
+
+  const col = (t, n) => t.cols.find(c => c.name === n) || t.cols[0];
+  const R = (ta, ca, tb, cb, type, label) =>
+    S.rels.push({id:uid("r"), from:{t:ta.id, c:ca.id}, to:{t:tb.id, c:cb.id}, type, label});
+  R(customer, col(customer, "id"), order,  col(order, "customer_id"), "1:N", "placed by");
+  R(order,    col(order, "id"),    payment, col(payment, "order_id"),   "1:1", "");
+  R(order,    col(order, "id"),    orderItem, col(orderItem, "order_id"), "1:N", "");
+  R(product,  col(product, "id"),  orderItem, col(orderItem, "product_id"), "1:N", "");
+  R(product,  col(product, "id"),  inventory, col(inventory, "product_id"), "1:N", "");
+}
+
+/* =========================================================
+   17. 启动
+   ========================================================= */
+function boot(){
+  if (!load()) seed();
+  requestAnimationFrame(() => {
+    fit();
+    render();
+    snap();
+  });
+}
+window.addEventListener("resize", () => { render(); });
+
+/* 只读调试钩子（便于脚本化检查，不影响交互） */
+window.__ER__ = { state: () => S, view: () => view };
+
+boot();
+
+})();
+</script>
+</body>
+</html>
