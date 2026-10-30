@@ -2,7 +2,7 @@
 
 一个单文件、零依赖、纯离线的 ER 图编辑器。双击 `index.html` 就能用，不需要安装、不需要后端、不联网，所有数据只存在你自己的浏览器里。
 
-**在线使用**：<https://dilrabasgossipman.github.io/er-designer/>
+**在线使用**：<https://ai-pionner.github.io/er-designer/>
 
 ## 为什么是单文件
 
